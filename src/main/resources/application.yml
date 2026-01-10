@@ -1,0 +1,272 @@
+# ========================================
+# INVOICE EXTRACTOR API - MAIN CONFIGURATION
+# ========================================
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+  compression:
+    enabled: true
+  error:
+    include-message: always
+    include-binding-errors: always
+
+spring:
+  application:
+    name: invoice-extractor-api
+    
+  # ========================================
+  # DATABASE CONFIGURATION (H2)
+  # ========================================
+  datasource:
+    url: jdbc:h2:mem:invoicedb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+    
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+      settings:
+        web-allow-others: false
+        
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        use_sql_comments: true
+        
+  # ========================================
+  # SQL INITIALIZATION
+  # ========================================
+  sql:
+    init:
+      mode: always
+      data-locations: classpath:data.sql
+      
+  # ========================================
+  # JACKSON CONFIGURATION
+  # ========================================
+  jackson:
+    serialization:
+      indent-output: true
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+    default-property-inclusion: non_null
+    
+  # ========================================
+  # ASYNC CONFIGURATION
+  # ========================================
+  task:
+    execution:
+      pool:
+        core-size: 5
+        max-size: 10
+        queue-capacity: 100
+      thread-name-prefix: async-extraction-
+      
+# ========================================
+# ACTUATOR (Health & Metrics)
+# ========================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+  health:
+    defaults:
+      enabled: true
+      
+# ========================================
+# SPRINGDOC (Swagger/OpenAPI)
+# ========================================
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    operations-sorter: method
+    tags-sorter: alpha
+    try-it-out-enabled: true
+    
+# ========================================
+# JWT CONFIGURATION
+# ========================================
+jwt:
+  secret: YXRpbmEtaW52b2ljZS1leHRyYWN0b3Itc3VwZXItc2VjcmV0LWtleS0yMDI0LWNoYW5nZS1pbi1wcm9kdWN0aW9u
+  # Base64 encoded: "atina-invoice-extractor-super-secret-key-2024-change-in-production"
+  # IMPORTANTE: Cambiar esto en producción!!!
+  expiration: 86400000  # 24 hours in milliseconds
+  issuer: invoice-extractor-api
+  
+# ========================================
+# LOGGING CONFIGURATION
+# ========================================
+logging:
+  level:
+    root: INFO
+    com.atina.invoice: DEBUG
+    com.atina.invoicetrainer.engine: DEBUG
+    org.springframework.web: INFO
+    org.springframework.security: INFO
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{correlationId:-NO-CORRELATION}] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{correlationId:-NO-CORRELATION}] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/invoice-extractor-api.log
+    max-size: 10MB
+    max-history: 30
+    
+# ========================================
+# CUSTOM APPLICATION PROPERTIES
+# ========================================
+app:
+  version: 1.0.0
+  name: Invoice Extractor API
+  description: AI-powered invoice data extraction engine
+  
+  # Job configuration
+  jobs:
+    retention-days: 7  # Keep jobs for 7 days
+    cleanup-cron: "0 0 2 * * ?"  # Run cleanup at 2 AM daily
+    
+  # CORS configuration
+  cors:
+    allowed-origins: "*"
+    allowed-methods: "GET,POST,PUT,DELETE,OPTIONS"
+    allowed-headers: "*"
+    max-age: 3600
+    
+  # Rate limiting (opcional - implementar después si es necesario)
+  rate-limit:
+    enabled: false
+    requests-per-minute: 60
+
+---
+
+# ========================================
+# DEVELOPMENT PROFILE
+# ========================================
+spring:
+  config:
+    activate:
+      on-profile: dev
+      
+  # H2 Console enabled for dev
+  h2:
+    console:
+      enabled: true
+      
+logging:
+  level:
+    com.atina.invoice: DEBUG
+    org.springframework.web: DEBUG
+    
+jwt:
+  expiration: 3600000  # 1 hour for dev
+
+---
+
+# ========================================
+# PRODUCTION PROFILE
+# ========================================
+spring:
+  config:
+    activate:
+      on-profile: prod
+      
+  # Disable H2 console in production
+  h2:
+    console:
+      enabled: false
+      
+  # Use external database in production
+  # datasource:
+  #   url: jdbc:postgresql://localhost:5432/invoicedb
+  #   username: ${DB_USERNAME}
+  #   password: ${DB_PASSWORD}
+      
+logging:
+  level:
+    root: WARN
+    com.atina.invoice: INFO
+    
+jwt:
+  secret: ${JWT_SECRET}  # Must be set as environment variable
+  expiration: 86400000  # 24 hours
+
+server:
+  compression:
+    enabled: true
+    
+app:
+  cors:
+    allowed-origins: ${ALLOWED_ORIGINS:https://yourdomain.com}
+
+---
+
+# ========================================
+# TEST PROFILE
+# ========================================
+spring:
+  config:
+    activate:
+      on-profile: test
+      
+  jpa:
+    show-sql: false
+    
+logging:
+  level:
+    root: WARN
+    com.atina.invoice: DEBUG
+
+<!-- 
+========================================
+VARIABLES DE ENTORNO (Producción):
+========================================
+
+Configurar estas variables en producción:
+
+- JWT_SECRET: Secret key para JWT (debe ser fuerte)
+- DB_USERNAME: Username de la base de datos
+- DB_PASSWORD: Password de la base de datos
+- ALLOWED_ORIGINS: Dominios permitidos para CORS
+
+Ejemplo:
+export JWT_SECRET="your-super-secret-key-change-this-in-production"
+export DB_USERNAME="postgres"
+export DB_PASSWORD="your-db-password"
+export ALLOWED_ORIGINS="https://yourdomain.com,https://api.yourdomain.com"
+
+========================================
+PERFILES:
+========================================
+
+Ejecutar con perfil específico:
+
+# Development
+java -jar -Dspring.profiles.active=dev app.jar
+
+# Production
+java -jar -Dspring.profiles.active=prod app.jar
+
+# Test
+java -jar -Dspring.profiles.active=test app.jar
+
+========================================
+-->

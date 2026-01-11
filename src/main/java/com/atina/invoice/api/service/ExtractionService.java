@@ -19,11 +19,6 @@ public class ExtractionService {
     private final ObjectMapper objectMapper;
     private final MetricsService metricsService;
 
-    public ExtractionService(ObjectMapper objectMapper, MetricsService metricsService) {
-        this.objectMapper = objectMapper;
-        this.metricsService = metricsService;
-    }
-
     public JsonNode extract(JsonNode docling, JsonNode template, ExtractionOptions options) {
         log.info("Starting extraction process");
         
@@ -51,7 +46,7 @@ public class ExtractionService {
             
             return result;
             
-        } catch (InvoiceExtractionFacade.ValidationFailedException e) {
+        } catch (PDFExtractionFacade.ValidationFailedException e) {
             long duration = System.currentTimeMillis() - startTime;
             metricsService.recordExtraction(false, duration);
             throw new com.atina.invoice.api.exception.ValidationException(

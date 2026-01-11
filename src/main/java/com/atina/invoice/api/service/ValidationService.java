@@ -1,114 +1,171 @@
 package com.atina.invoice.api.service;
 
-import com.atina.invoicetrainer.engine.TemplateLoader;
-import com.atina.invoicetrainer.engine.TemplateModel.Template;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
+/**
+ * Service for template validation
+ * Validates templates before extraction
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ValidationService {
 
     private final ObjectMapper objectMapper;
-    private Process log;
 
-    public ValidationService(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
+    /**
+     * Validate template structure and business rules
+     */
+    public Map<String, Object> validateTemplate(JsonNode template, boolean strictMode) {
+        log.info("Validating template, strictMode: {}", strictMode);
+
+        Map<String, Object> result = new HashMap<>();
+        List<Map<String, Object>> issues = new ArrayList<>();
+
+        try {
+            // Validate basic structure
+            if (!template.has("templateId")) {
+                issues.add(createIssue("ERROR", "templateId", "Missing required field: templateId"));
+            }
+
+            if (!template.has("blocks")) {
+                issues.add(createIssue("ERROR", "blocks", "Missing required field: blocks"));
+            }
+
+            // Validate blocks
+            if (template.has("blocks") && template.get("blocks").isArray()) {
+                validateBlocks(template.get("blocks"), issues, strictMode);
+            }
+
+            // Build summary
+            Map<String, Object> summary = new HashMap<>();
+            summary.put("templateId", template.has("templateId") ? template.get("templateId").asText() : "unknown");
+            summary.put("blocksCount", template.has("blocks") ? template.get("blocks").size() : 0);
+            summary.put("rulesCount", countRules(template));
+            summary.put("ruleTypes", getRuleTypes(template));
+
+            result.put("valid", issues.stream().noneMatch(i -> "ERROR".equals(i.get("level"))));
+            result.put("summary", summary);
+            result.put("issues", issues);
+
+        } catch (Exception e) {
+            log.error("Validation failed", e);
+            issues.add(createIssue("ERROR", "general", "Validation failed: " + e.getMessage()));
+            result.put("valid", false);
+            result.put("issues", issues);
+        }
+
+        return result;
     }
 
-    public Map<String, Object> validateTemplate(JsonNode templateNode, boolean strictMode) {
-        log.info("Validating template (strictMode: {})", strictMode);
-        
-        Map<String, Object> result = new HashMap<>();
-        List<Map<String, String>> validations = new ArrayList<>();
-        
-        try {
-            String templateJson = objectMapper.writeValueAsString(templateNode);
-            
-            // Load template using TemplateLoader
-            Template template = TemplateLoader.loadFromJson(templateJson);
-            
-            // Basic validation passed if we got here
-            result.put("valid", true);
-            
-            // Extract template info
-            Map<String, Object> templateInfo = new HashMap<>();
-            templateInfo.put("templateId", template.templateId());
-            templateInfo.put("blocksCount", template.blocks() != null ? template.blocks().size() : 0);
-            templateInfo.put("rulesCount", template.rules() != null ? template.rules().size() : 0);
-            
-            // Count rule types
-            Map<String, Integer> ruleTypes = new HashMap<>();
-            if (template.rules() != null) {
-                template.rules().forEach(rule -> {
-                    String type = rule.type();
-                    ruleTypes.put(type, ruleTypes.getOrDefault(type, 0) + 1);
-                });
+    /**
+     * Validate blocks array
+     */
+    private void validateBlocks(JsonNode blocks, List<Map<String, Object>> issues, boolean strictMode) {
+        for (int i = 0; i < blocks.size(); i++) {
+            JsonNode block = blocks.get(i);
+            String blockPath = "blocks[" + i + "]";
+
+            // Validate block has required fields
+            if (!block.has("blockId")) {
+                issues.add(createIssue("ERROR", blockPath, "Missing blockId"));
             }
-            templateInfo.put("ruleTypes", ruleTypes);
-            
-            result.put("template", templateInfo);
-            
-            // Additional validations in strict mode
-            if (strictMode) {
-                // Check for common issues
-                if (template.rules() == null || template.rules().isEmpty()) {
-                    Map<String, String> issue = new HashMap<>();
-                    issue.put("severity", "WARNING");
-                    issue.put("path", "rules");
-                    issue.put("message", "No rules defined in template");
-                    validations.add(issue);
-                }
-                
-                // Check for duplicate rule IDs
-                if (template.rules() != null) {
-                    Map<String, Long> idCounts = new HashMap<>();
-                    template.rules().forEach(rule -> {
-                        String id = rule.id();
-                        idCounts.put(id, idCounts.getOrDefault(id, 0L) + 1);
-                    });
-                    
-                    idCounts.forEach((id, count) -> {
-                        if (count > 1) {
-                            Map<String, String> issue = new HashMap<>();
-                            issue.put("severity", "ERROR");
-                            issue.put("path", "rules");
-                            issue.put("message", "Duplicate rule ID: " + id);
-                            validations.add(issue);
-                            result.put("valid", false);
-                        }
-                    });
-                }
+
+            if (!block.has("rules")) {
+                issues.add(createIssue("ERROR", blockPath, "Missing rules"));
             }
-            
-            result.put("validations", validations);
-            
-            log.info("Template validation completed. Valid: {}, Issues: {}", 
-                result.get("valid"), validations.size());
-            
-        } catch (Exception e) {
-            log.error("Template validation failed", e);
-            
-            result.put("valid", false);
-            
-            Map<String, String> issue = new HashMap<>();
-            issue.put("severity", "ERROR");
-            issue.put("path", "template");
-            issue.put("message", "Template parsing failed: " + e.getMessage());
-            validations.add(issue);
-            
-            result.put("validations", validations);
+
+            // Validate rules
+            if (block.has("rules") && block.get("rules").isArray()) {
+                validateRules(block.get("rules"), issues, blockPath, strictMode);
+            }
         }
-        
-        return result;
+    }
+
+    /**
+     * Validate rules array
+     */
+    private void validateRules(JsonNode rules, List<Map<String, Object>> issues, String blockPath, boolean strictMode) {
+        Set<String> supportedTypes = new HashSet<>(Arrays.asList(
+                "anchor_proximity",
+                "region_anchor_proximity",
+                "line_regex",
+                "global_regex",
+                "table_by_headers"
+        ));
+
+        for (int i = 0; i < rules.size(); i++) {
+            JsonNode rule = rules.get(i);
+            String rulePath = blockPath + ".rules[" + i + "]";
+
+            // Validate rule type
+            if (!rule.has("type")) {
+                issues.add(createIssue("ERROR", rulePath, "Missing rule type"));
+            } else {
+                String type = rule.get("type").asText();
+                if (!supportedTypes.contains(type)) {
+                    issues.add(createIssue(strictMode ? "ERROR" : "WARNING",
+                            rulePath,
+                            "Unsupported rule type: " + type));
+                }
+            }
+
+            // Validate field
+            if (!rule.has("field")) {
+                issues.add(createIssue("ERROR", rulePath, "Missing field"));
+            }
+        }
+    }
+
+    /**
+     * Count total rules in template
+     */
+    private int countRules(JsonNode template) {
+        int count = 0;
+        if (template.has("blocks") && template.get("blocks").isArray()) {
+            for (JsonNode block : template.get("blocks")) {
+                if (block.has("rules") && block.get("rules").isArray()) {
+                    count += block.get("rules").size();
+                }
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Get rule types distribution
+     */
+    private Map<String, Integer> getRuleTypes(JsonNode template) {
+        Map<String, Integer> types = new HashMap<>();
+        if (template.has("blocks") && template.get("blocks").isArray()) {
+            for (JsonNode block : template.get("blocks")) {
+                if (block.has("rules") && block.get("rules").isArray()) {
+                    for (JsonNode rule : block.get("rules")) {
+                        if (rule.has("type")) {
+                            String type = rule.get("type").asText();
+                            types.put(type, types.getOrDefault(type, 0) + 1);
+                        }
+                    }
+                }
+            }
+        }
+        return types;
+    }
+
+    /**
+     * Create validation issue
+     */
+    private Map<String, Object> createIssue(String level, String path, String message) {
+        Map<String, Object> issue = new HashMap<>();
+        issue.put("level", level);
+        issue.put("path", path);
+        issue.put("message", message);
+        return issue;
     }
 }

@@ -30,12 +30,6 @@ public class JobService {
     private final ExtractionService extractionService;
     private final ObjectMapper objectMapper;
 
-    public JobService(JobRepository jobRepository, ExtractionService extractionService, ObjectMapper objectMapper) {
-        this.jobRepository = jobRepository;
-        this.extractionService = extractionService;
-        this.objectMapper = objectMapper;
-    }
-
     @Transactional
     public Job createJob(JsonNode docling, JsonNode template, ExtractionOptions options, String correlationId) {
         try {

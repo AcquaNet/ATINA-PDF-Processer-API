@@ -24,10 +24,6 @@ public class MetricsService {
     private final AtomicLong failedExtractions = new AtomicLong(0);
     private final AtomicLong totalDuration = new AtomicLong(0);
 
-    public MetricsService(JobRepository jobRepository) {
-        this.jobRepository = jobRepository;
-    }
-
     public void recordExtraction(boolean success, long duration) {
         totalExtractions.incrementAndGet();
         

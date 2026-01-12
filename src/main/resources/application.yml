@@ -3,6 +3,11 @@
 # ============================================
 
 spring:
+
+  validation:
+    method:
+      enabled: false
+
   application:
     name: invoice-extractor-api
 
@@ -123,6 +128,14 @@ docling:
 logging:
   level:
     root: INFO
+
+    #  TRACE para Spring Framework - ver TODOS los errores
+    #org.springframework: TRACE
+    #org.springframework.beans: TRACE
+    #org.springframework.beans.factory: TRACE
+    #org.springframework.beans.factory.support: TRACE
+    #org.springframework.context: TRACE
+
     com.atina.invoice.api: DEBUG
     org.springframework.web: DEBUG
     org.springframework.security: DEBUG

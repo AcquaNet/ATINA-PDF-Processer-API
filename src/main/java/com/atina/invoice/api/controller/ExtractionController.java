@@ -271,7 +271,7 @@ public class ExtractionController {
     private JobResponse buildJobResponse(Job job) {
         return JobResponse.builder()
                 .jobId(job.getId())
-                .status(job.getStatus().name())  // FIXED: usar .name() para convertir enum a String
+                .status(job.getStatus())  // FIXED: usar .name() para convertir enum a String
                 .progress(job.getProgress())
                 .createdAt(job.getCreatedAt())
                 .startedAt(job.getStartedAt())

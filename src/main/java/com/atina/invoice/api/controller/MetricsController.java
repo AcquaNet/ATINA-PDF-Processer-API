@@ -71,8 +71,7 @@ public class MetricsController {
     public ApiResponse<Void> resetMetrics() {
         log.info("Metrics reset requested");
         
-        // TODO: Implement reset in MetricsService if needed
-        // metricsService.resetMetrics();
+        metricsService.resetMetrics();
         
         return ApiResponse.success(null, MDC.get("correlationId"), 0L);
     }

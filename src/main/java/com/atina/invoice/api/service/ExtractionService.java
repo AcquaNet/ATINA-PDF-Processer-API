@@ -42,20 +42,21 @@ public class ExtractionService {
             log.info("Extraction completed successfully in {}ms", duration);
             
             // Track metrics
-            metricsService.recordExtraction(true, duration);
+            metricsService.recordExtractionSuccess();
+
             
             return result;
             
         } catch (PDFExtractionFacade.ValidationFailedException e) {
             long duration = System.currentTimeMillis() - startTime;
-            metricsService.recordExtraction(false, duration);
+            metricsService.recordExtractionFailure();
             throw new com.atina.invoice.api.exception.ValidationException(
                 "Validation failed: " + e.getMessage(), e
             );
             
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - startTime;
-            metricsService.recordExtraction(false, duration);
+            metricsService.recordExtractionFailure();
             log.error("Extraction failed", e);
             throw new com.atina.invoice.api.exception.ExtractionException(
                 "Extraction failed: " + e.getMessage(), e

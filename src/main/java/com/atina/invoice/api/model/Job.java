@@ -27,10 +27,10 @@ public class Job {
     @Column(nullable = false)
     private String correlationId;
 
-    @Column(nullable = false, length = 50000)
+    @Column(nullable = false, length = 500000)
     private String requestPayload;  // JSON string
 
-    @Column(length = 100000)
+    @Column(length = 1000000)
     private String resultPayload;  // JSON string
 
     @Column

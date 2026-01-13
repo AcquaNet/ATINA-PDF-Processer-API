@@ -1,24 +1,31 @@
 package com.atina.invoice.api.controller;
 
 import com.atina.invoice.api.dto.request.BatchExtractionRequest;
+import com.atina.invoice.api.dto.request.ExtractionOptions;
 import com.atina.invoice.api.dto.request.ExtractionRequest;
 import com.atina.invoice.api.dto.request.ValidateTemplateRequest;
 import com.atina.invoice.api.dto.response.ApiResponse;
 import com.atina.invoice.api.dto.response.JobResponse;
 import com.atina.invoice.api.dto.response.ValidationResponse;
+import com.atina.invoice.api.exception.DoclingException;
+import com.atina.invoice.api.exception.ExtractionException;
 import com.atina.invoice.api.model.Job;
 import com.atina.invoice.api.model.JobStatus;
+import com.atina.invoice.api.service.DoclingService;
 import com.atina.invoice.api.service.ExtractionService;
 import com.atina.invoice.api.service.JobService;
 import com.atina.invoice.api.service.ValidationService;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -37,6 +44,8 @@ public class ExtractionController {
     private final ExtractionService extractionService;
     private final JobService jobService;
     private final ValidationService validationService;
+    private final DoclingService doclingService;  // ⭐ AGREGAR
+    private final ObjectMapper objectMapper;
 
     /**
      * Synchronous extraction
@@ -69,6 +78,139 @@ public class ExtractionController {
 
         return ApiResponse.success(result, MDC.get("correlationId"), duration);
     }
+
+    /**
+     * Extract from PDF file
+     *
+     * POST /api/v1/extract/pdf
+     *
+     * Receives PDF, converts to Docling JSON, then extracts data
+     * Combines PDF conversion + extraction in one step
+     */
+    @PostMapping(value = "/extract/pdf", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(
+            summary = "Extract invoice data from PDF",
+            description = "Upload PDF and template. System converts PDF to Docling JSON automatically, then extracts data."
+    )
+    public ApiResponse<JsonNode> extractFromPdf(
+            @RequestPart("file") MultipartFile pdfFile,
+            @RequestPart("template") String templateJson,
+            @RequestPart(value = "options", required = false) String optionsJson
+    ) {
+        log.info("PDF extraction requested: {} ({} bytes)",
+                pdfFile.getOriginalFilename(), pdfFile.getSize());
+
+        long start = System.currentTimeMillis();
+
+        try {
+            // 1. Parse template
+            JsonNode template = objectMapper.readTree(templateJson);
+
+            // 2. Parse options (if provided)
+            ExtractionOptions options = null;
+            if (optionsJson != null && !optionsJson.isEmpty()) {
+                options = objectMapper.readValue(optionsJson, ExtractionOptions.class);
+            }
+
+            // 3. Convert PDF to Docling JSON
+            log.debug("Converting PDF to Docling JSON...");
+            JsonNode doclingJson = doclingService.convertPdf(pdfFile);
+            log.debug("PDF converted successfully");
+
+            // 4. Extract data using template
+            log.debug("Extracting data from Docling JSON...");
+            JsonNode result = extractionService.extract(doclingJson, template, options);
+            log.debug("Extraction completed successfully");
+
+            long duration = System.currentTimeMillis() - start;
+
+            log.info("PDF extraction completed in {}ms", duration);
+
+            return ApiResponse.success(result, MDC.get("correlationId"), duration);
+
+        } catch (DoclingException e) {
+            log.error("Docling conversion failed", e);
+            long duration = System.currentTimeMillis() - start;
+            return ApiResponse.error("Docling conversion failed: " + e.getMessage(),
+                    MDC.get("correlationId"), duration);
+
+        } catch (ExtractionException e) {
+            log.error("Extraction failed", e);
+            long duration = System.currentTimeMillis() - start;
+            return ApiResponse.error("Extraction failed: " + e.getMessage(),
+                    MDC.get("correlationId"), duration);
+
+        } catch (Exception e) {
+            log.error("PDF extraction failed", e);
+            long duration = System.currentTimeMillis() - start;
+            return ApiResponse.error("PDF extraction failed: " + e.getMessage(),
+                    MDC.get("correlationId"), duration);
+        }
+    }
+
+    /**
+     * Extract from PDF file (asynchronous)
+     *
+     * POST /api/v1/extract/pdf/async
+     *
+     * Creates job for PDF extraction in background
+     */
+    @PostMapping(value = "/extract/pdf/async", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(
+            summary = "Extract from PDF (async)",
+            description = "Upload PDF and template. Creates job for background processing. Returns job ID immediately."
+    )
+    public ApiResponse<JobResponse> extractFromPdfAsync(
+            @RequestPart("file") MultipartFile pdfFile,
+            @RequestPart("template") String templateJson,
+            @RequestPart(value = "options", required = false) String optionsJson
+    ) {
+        log.info("Async PDF extraction requested: {}", pdfFile.getOriginalFilename());
+
+        long start = System.currentTimeMillis();
+
+        try {
+            // 1. Convert PDF to Docling JSON first (to avoid storing binary in job)
+            log.debug("Converting PDF to Docling JSON...");
+            JsonNode doclingJson = doclingService.convertPdf(pdfFile);
+
+            // 2. Parse template
+            JsonNode template = objectMapper.readTree(templateJson);
+
+            // 3. Parse options
+            ExtractionOptions options = null;
+            if (optionsJson != null && !optionsJson.isEmpty()) {
+                options = objectMapper.readValue(optionsJson, ExtractionOptions.class);
+            }
+
+            // 4. Create job with Docling JSON
+            Job job = jobService.createJob(
+                    doclingJson,
+                    template,
+                    options,
+                    MDC.get("correlationId")
+            );
+
+            // 5. Process async
+            jobService.processJobAsync(job.getId());
+
+            // 6. Build response
+            JobResponse response = buildJobResponse(job);
+
+            long duration = System.currentTimeMillis() - start;
+
+            log.info("Async PDF job created: {} ({}ms)", job.getId(), duration);
+
+            return ApiResponse.success(response, MDC.get("correlationId"), duration);
+
+        } catch (Exception e) {
+            log.error("Async PDF extraction failed", e);
+            long duration = System.currentTimeMillis() - start;
+            return ApiResponse.error("Async PDF extraction failed: " + e.getMessage(),
+                    MDC.get("correlationId"), duration);
+        }
+    }
+
 
     /**
      * Asynchronous extraction
@@ -239,30 +381,23 @@ public class ExtractionController {
             summary = "Validate extraction template",
             description = "Validate template structure and business rules without executing extraction"
     )
-    public ApiResponse<ValidationResponse> validateTemplate(@Valid @RequestBody ValidateTemplateRequest request) {
+    public ApiResponse<JsonNode> validateTemplate(@Valid @RequestBody ValidateTemplateRequest request) {
+
         log.info("Template validation requested");
 
         long start = System.currentTimeMillis();
 
-        // Validate template
-        Map<String, Object> validationResult = validationService.validateTemplate(
-                request.getTemplate(),
-                request.getStrictMode() != null ? request.getStrictMode() : false
-        );
-
         // Build response
-        ValidationResponse response = ValidationResponse.builder()
-                .valid((Boolean) validationResult.get("valid"))
-                .template((ValidationResponse.TemplateSummary) validationResult.get("summary"))
-                .validations((java.util.List<ValidationResponse.ValidationIssue>) validationResult.get("issues"))
-                .build();
+        JsonNode result = validationService.validateTemplate(
+                request.getTemplate(),
+                request.getOptions()
+        );
 
         long duration = System.currentTimeMillis() - start;
 
-        log.info("Template validation completed: {} ({}ms)",
-                response.isValid() ? "VALID" : "INVALID", duration);
 
-        return ApiResponse.success(response, MDC.get("correlationId"), duration);
+        return ApiResponse.success(result, MDC.get("correlationId"), duration);
+
     }
 
     /**

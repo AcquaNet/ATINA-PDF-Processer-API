@@ -33,7 +33,7 @@ public class ExtractionService {
             Map<String, Object> extractionOptions = buildOptions(options);
             
             // Call extraction facade
-            String resultJson = PDFExtractionFacade.extract(doclingJson, templateJson, extractionOptions);
+            String resultJson = PDFExtractionFacade.processPDF(doclingJson, templateJson, extractionOptions);
             
             // Parse result
             JsonNode result = objectMapper.readTree(resultJson);

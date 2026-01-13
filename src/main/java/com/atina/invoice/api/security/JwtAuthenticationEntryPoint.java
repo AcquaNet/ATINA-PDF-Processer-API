@@ -14,6 +14,10 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 
+/**
+ * JWT Authentication Entry Point
+ * Handles unauthorized access attempts
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -23,19 +27,21 @@ public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
     @Override
     public void commence(HttpServletRequest request,
-                        HttpServletResponse response,
-                        AuthenticationException authException) throws IOException {
-        
+                         HttpServletResponse response,
+                         AuthenticationException authException) throws IOException {
+
         log.error("Unauthorized error: {}", authException.getMessage());
-        
+
+        // Create ErrorResponse with details
         ErrorResponse error = ErrorResponse.builder()
                 .code("UNAUTHORIZED")
                 .message("Unauthorized: " + authException.getMessage())
                 .path(request.getRequestURI())
                 .build();
-        
-        ApiResponse<?> apiResponse = ApiResponse.error(error);
-        
+
+        // ✅ Ahora funciona - ApiResponse acepta ErrorResponse
+        ApiResponse<ErrorResponse> apiResponse = ApiResponse.error(error);
+
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.getWriter().write(objectMapper.writeValueAsString(apiResponse));

@@ -1,5 +1,7 @@
 package com.atina.invoice.api.service;
 
+import com.atina.invoice.api.dto.request.ExtractionOptions;
+import com.atina.pdfProcesser.PDFExtractionFacade;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -22,150 +24,60 @@ public class ValidationService {
     /**
      * Validate template structure and business rules
      */
-    public Map<String, Object> validateTemplate(JsonNode template, boolean strictMode) {
-        log.info("Validating template, strictMode: {}", strictMode);
+    public JsonNode validateTemplate(JsonNode template, ExtractionOptions options) {
+        log.info("Starting extraction process");
 
-        Map<String, Object> result = new HashMap<>();
-        List<Map<String, Object>> issues = new ArrayList<>();
+        long startTime = System.currentTimeMillis();
 
         try {
-            // Validate basic structure
-            if (!template.has("templateId")) {
-                issues.add(createIssue("ERROR", "templateId", "Missing required field: templateId"));
-            }
 
-            if (!template.has("blocks")) {
-                issues.add(createIssue("ERROR", "blocks", "Missing required field: blocks"));
-            }
+            String templateJson = objectMapper.writeValueAsString(template);
 
-            // Validate blocks
-            if (template.has("blocks") && template.get("blocks").isArray()) {
-                validateBlocks(template.get("blocks"), issues, strictMode);
-            }
+            // Prepare options
+            Map<String, Object> extractionOptions = buildOptions(options);
 
-            // Build summary
-            Map<String, Object> summary = new HashMap<>();
-            summary.put("templateId", template.has("templateId") ? template.get("templateId").asText() : "unknown");
-            summary.put("blocksCount", template.has("blocks") ? template.get("blocks").size() : 0);
-            summary.put("rulesCount", countRules(template));
-            summary.put("ruleTypes", getRuleTypes(template));
+            // Call extraction facade
+            String resultJson = PDFExtractionFacade.validateTemplate(templateJson, extractionOptions);
 
-            result.put("valid", issues.stream().noneMatch(i -> "ERROR".equals(i.get("level"))));
-            result.put("summary", summary);
-            result.put("issues", issues);
+            // Parse result
+            JsonNode result = objectMapper.readTree(resultJson);
+
+            long duration = System.currentTimeMillis() - startTime;
+            log.info("Extraction completed successfully in {}ms", duration);
+
+            return result;
+
+        } catch (PDFExtractionFacade.ValidationFailedException e) {
+            long duration = System.currentTimeMillis() - startTime;
+            throw new com.atina.invoice.api.exception.ValidationException(
+                    "Validation failed: " + e.getMessage(), e
+            );
 
         } catch (Exception e) {
-            log.error("Validation failed", e);
-            issues.add(createIssue("ERROR", "general", "Validation failed: " + e.getMessage()));
-            result.put("valid", false);
-            result.put("issues", issues);
-        }
-
-        return result;
-    }
-
-    /**
-     * Validate blocks array
-     */
-    private void validateBlocks(JsonNode blocks, List<Map<String, Object>> issues, boolean strictMode) {
-        for (int i = 0; i < blocks.size(); i++) {
-            JsonNode block = blocks.get(i);
-            String blockPath = "blocks[" + i + "]";
-
-            // Validate block has required fields
-            if (!block.has("blockId")) {
-                issues.add(createIssue("ERROR", blockPath, "Missing blockId"));
-            }
-
-            if (!block.has("rules")) {
-                issues.add(createIssue("ERROR", blockPath, "Missing rules"));
-            }
-
-            // Validate rules
-            if (block.has("rules") && block.get("rules").isArray()) {
-                validateRules(block.get("rules"), issues, blockPath, strictMode);
-            }
+            long duration = System.currentTimeMillis() - startTime;
+            log.error("Extraction failed", e);
+            throw new com.atina.invoice.api.exception.ExtractionException(
+                    "Extraction failed: " + e.getMessage(), e
+            );
         }
     }
 
-    /**
-     * Validate rules array
-     */
-    private void validateRules(JsonNode rules, List<Map<String, Object>> issues, String blockPath, boolean strictMode) {
-        Set<String> supportedTypes = new HashSet<>(Arrays.asList(
-                "anchor_proximity",
-                "region_anchor_proximity",
-                "line_regex",
-                "global_regex",
-                "table_by_headers"
-        ));
+    private Map<String, Object> buildOptions(ExtractionOptions options) {
+        Map<String, Object> map = new HashMap<>();
 
-        for (int i = 0; i < rules.size(); i++) {
-            JsonNode rule = rules.get(i);
-            String rulePath = blockPath + ".rules[" + i + "]";
-
-            // Validate rule type
-            if (!rule.has("type")) {
-                issues.add(createIssue("ERROR", rulePath, "Missing rule type"));
-            } else {
-                String type = rule.get("type").asText();
-                if (!supportedTypes.contains(type)) {
-                    issues.add(createIssue(strictMode ? "ERROR" : "WARNING",
-                            rulePath,
-                            "Unsupported rule type: " + type));
-                }
-            }
-
-            // Validate field
-            if (!rule.has("field")) {
-                issues.add(createIssue("ERROR", rulePath, "Missing field"));
-            }
+        if (options != null) {
+            map.put("returnRealTemplate", options.getIncludeMeta() != null ? options.getIncludeMeta() : true);
+            map.put("validateSchema", options.getIncludeEvidence() != null ? options.getIncludeEvidence() : true);
+            map.put("pretty", options.getPretty() != null ? options.getPretty() : true);
+        } else {
+            // Defaults
+            map.put("returnRealTemplate", true);
+            map.put("validateSchema", true);
+            map.put("pretty", true);
         }
+
+        return map;
     }
 
-    /**
-     * Count total rules in template
-     */
-    private int countRules(JsonNode template) {
-        int count = 0;
-        if (template.has("blocks") && template.get("blocks").isArray()) {
-            for (JsonNode block : template.get("blocks")) {
-                if (block.has("rules") && block.get("rules").isArray()) {
-                    count += block.get("rules").size();
-                }
-            }
-        }
-        return count;
-    }
 
-    /**
-     * Get rule types distribution
-     */
-    private Map<String, Integer> getRuleTypes(JsonNode template) {
-        Map<String, Integer> types = new HashMap<>();
-        if (template.has("blocks") && template.get("blocks").isArray()) {
-            for (JsonNode block : template.get("blocks")) {
-                if (block.has("rules") && block.get("rules").isArray()) {
-                    for (JsonNode rule : block.get("rules")) {
-                        if (rule.has("type")) {
-                            String type = rule.get("type").asText();
-                            types.put(type, types.getOrDefault(type, 0) + 1);
-                        }
-                    }
-                }
-            }
-        }
-        return types;
-    }
-
-    /**
-     * Create validation issue
-     */
-    private Map<String, Object> createIssue(String level, String path, String message) {
-        Map<String, Object> issue = new HashMap<>();
-        issue.put("level", level);
-        issue.put("path", path);
-        issue.put("message", message);
-        return issue;
-    }
 }

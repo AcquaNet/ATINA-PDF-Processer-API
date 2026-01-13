@@ -2,6 +2,7 @@ package com.atina.invoice.api.dto.request;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -17,6 +18,11 @@ public class ValidateTemplateRequest {
     @Schema(description = "Template to validate", required = true)
     private JsonNode template;
 
-    @Schema(description = "Enable strict validation mode", defaultValue = "false")
-    private Boolean strictMode = false;
+    @Valid
+    @Schema(description = "Extraction options")
+    private ExtractionOptions options;
+
+    @Schema(description = "Custom correlation ID for tracing")
+    private String correlationId;
+
 }

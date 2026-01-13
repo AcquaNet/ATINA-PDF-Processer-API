@@ -113,15 +113,10 @@ app:
 # Docling Configuration
 # ============================================
 docling:
-  mode: api  # api or cli
-  api:
-    url: ${DOCLING_API_URL:http://localhost:5000}
-    timeout: 60000  # 60 seconds
-  cli:
-    path: ${DOCLING_CLI_PATH:/usr/local/bin/docling}
-  temp:
-    dir: ${java.io.tmpdir}/docling
-
+  host: ${DOCLING_HOST:docling.localhost}
+  port: ${DOCLING_PORT:5001}
+  user: ${DOCLING_USER:__admin__}
+  pass: ${DOCLING_PASS:admin123}
 # ============================================
 # Logging Configuration
 # ============================================

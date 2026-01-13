@@ -26,7 +26,8 @@ public class ExtractionService {
         
         try {
             // Convert JsonNode to String
-            String doclingJson = objectMapper.writeValueAsString(docling);
+            JsonNode doclingContent = docling.has("json_content") ? docling.get("json_content") : docling;
+            String doclingJson = objectMapper.writeValueAsString(doclingContent);
             String templateJson = objectMapper.writeValueAsString(template);
             
             // Prepare options

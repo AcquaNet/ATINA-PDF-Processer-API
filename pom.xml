@@ -225,25 +225,3 @@
     </build>
 
 </project>
-
-<!-- 
-========================================
-INSTALACIÓN:
-========================================
-
-1. INSTALAR TU ENGINE PRIMERO:
-   cd /path/to/invoice-extractor-engine
-   mvn clean install
-
-2. COMPILAR LA API:
-   cd /path/to/invoice-extractor-api
-   mvn clean package
-
-3. EJECUTAR:
-   java -jar target/invoice-extractor-api-1.0.0.jar
-
-4. VERIFICAR:
-   http://localhost:8080/swagger-ui.html
-
-========================================
--->

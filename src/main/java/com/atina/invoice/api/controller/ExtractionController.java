@@ -1,11 +1,9 @@
 package com.atina.invoice.api.controller;
 
-import com.atina.invoice.api.dto.request.BatchExtractionRequest;
-import com.atina.invoice.api.dto.request.ExtractionOptions;
-import com.atina.invoice.api.dto.request.ExtractionRequest;
-import com.atina.invoice.api.dto.request.ValidateTemplateRequest;
+import com.atina.invoice.api.dto.request.*;
 import com.atina.invoice.api.dto.response.ApiResponse;
 import com.atina.invoice.api.dto.response.JobResponse;
+import com.atina.invoice.api.dto.response.ValidationResponse;
 import com.atina.invoice.api.exception.DoclingException;
 import com.atina.invoice.api.exception.ExtractionException;
 import com.atina.invoice.api.model.Job;
@@ -399,6 +397,50 @@ public class ExtractionController {
         return ApiResponse.success(result, MDC.get("correlationId"), duration);
 
     }
+
+    /**
+     * Validate template from file
+     *
+     * POST /api/v1/validate-template/file
+     *
+     * Validates a template file without executing extraction
+     */
+    @PostMapping(value = "/validate-template/file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(
+            summary = "Validate extraction template from file",
+            description = "Upload template file to validate structure and business rules without executing extraction"
+    )
+    public ApiResponse<JsonNode> validateTemplateFile(
+            @RequestPart("template") MultipartFile templateFile,
+            @RequestPart(value = "options", required = false) ValidateOptions options
+    ) {
+        log.info("Template file validation requested: {}", templateFile.getOriginalFilename());
+
+        long start = System.currentTimeMillis();
+
+        try {
+            // Read and parse template file
+            String templateContent = new String(templateFile.getBytes(), StandardCharsets.UTF_8);
+            JsonNode template = objectMapper.readTree(templateContent);
+
+            // Build response
+            JsonNode result = validationService.validateTemplate(
+                    template,
+                    options
+            );
+
+            long duration = System.currentTimeMillis() - start;
+
+            return ApiResponse.success(result, MDC.get("correlationId"), duration);
+
+        } catch (Exception e) {
+            log.error("Template file validation failed", e);
+            long duration = System.currentTimeMillis() - start;
+            return ApiResponse.error("Template validation failed: " + e.getMessage(),
+                    MDC.get("correlationId"), duration);
+        }
+    }
+
 
     /**
      * Helper method to build JobResponse from Job entity

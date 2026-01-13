@@ -20,7 +20,7 @@ public class ValidateTemplateRequest {
 
     @Valid
     @Schema(description = "Extraction options")
-    private ExtractionOptions options;
+    private ValidateOptions options;
 
     @Schema(description = "Custom correlation ID for tracing")
     private String correlationId;

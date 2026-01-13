@@ -1,6 +1,7 @@
 package com.atina.invoice.api.service;
 
 import com.atina.invoice.api.dto.request.ExtractionOptions;
+import com.atina.invoice.api.dto.request.ValidateOptions;
 import com.atina.pdfProcesser.PDFExtractionFacade;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -24,7 +25,7 @@ public class ValidationService {
     /**
      * Validate template structure and business rules
      */
-    public JsonNode validateTemplate(JsonNode template, ExtractionOptions options) {
+    public JsonNode validateTemplate(JsonNode template, ValidateOptions options) {
         log.info("Starting extraction process");
 
         long startTime = System.currentTimeMillis();
@@ -62,12 +63,12 @@ public class ValidationService {
         }
     }
 
-    private Map<String, Object> buildOptions(ExtractionOptions options) {
+    private Map<String, Object> buildOptions(ValidateOptions options) {
         Map<String, Object> map = new HashMap<>();
 
         if (options != null) {
-            map.put("returnRealTemplate", options.getIncludeMeta() != null ? options.getIncludeMeta() : true);
-            map.put("validateSchema", options.getIncludeEvidence() != null ? options.getIncludeEvidence() : true);
+            map.put("returnRealTemplate", options.getReturnRealTemplate() != null ? options.getReturnRealTemplate() : true);
+            map.put("validateSchema", options.getValidateSchema() != null ? options.getValidateSchema() : true);
             map.put("pretty", options.getPretty() != null ? options.getPretty() : true);
         } else {
             // Defaults

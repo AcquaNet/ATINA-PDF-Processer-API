@@ -30,6 +30,21 @@ public class MultiTenancyDataInitializer {
         return args -> {
             log.info("Initializing multi-tenancy data...");
 
+            // Crear tenant SYSTEM
+            Tenant systemTenant = createTenantIfNotExists(
+                    tenantRepository, "SYSTEM", "System Administration",
+                    "admin@system.internal", "UNLIMITED", null, null
+            );
+
+            // Crear super admin
+            createUserIfNotExists(
+                    userRepository, "superadmin", "superadmin123",
+                    "System Super Administrator", "superadmin@system.internal",
+                    "SYSTEM_ADMIN", systemTenant
+            );
+
+
+
             // Create tenants if they don't exist
             Tenant acmeTenant = createTenantIfNotExists(
                 tenantRepository,

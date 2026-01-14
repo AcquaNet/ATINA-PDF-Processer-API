@@ -39,7 +39,7 @@ public class AdminMetricsController {
      * Get metrics for all tenants
      */
     @GetMapping("/tenants")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(summary = "Get metrics for all tenants", description = "Returns usage metrics grouped by tenant")
     public ApiResponse<Map<String, Object>> getAllTenantMetrics() {
         log.info("Fetching metrics for all tenants");
@@ -70,7 +70,7 @@ public class AdminMetricsController {
      * Get metrics for a specific tenant
      */
     @GetMapping("/tenants/{tenantId}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(summary = "Get metrics for specific tenant")
     public ApiResponse<Map<String, Object>> getTenantMetrics(@PathVariable Long tenantId) {
         log.info("Fetching metrics for tenant: {}", tenantId);
@@ -98,7 +98,7 @@ public class AdminMetricsController {
      * Get aggregated metrics for a specific metric key across all tenants
      */
     @GetMapping("/aggregated/{metricKey}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(summary = "Get aggregated metrics across tenants")
     public ApiResponse<Map<String, Object>> getAggregatedMetrics(@PathVariable String metricKey) {
         log.info("Fetching aggregated metrics for key: {}", metricKey);
@@ -117,7 +117,7 @@ public class AdminMetricsController {
      * Get system-wide metrics (not tenant-specific)
      */
     @GetMapping("/system")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(summary = "Get system-wide metrics")
     public ApiResponse<Map<String, Object>> getSystemMetrics() {
         log.info("Fetching system-wide metrics");
@@ -132,7 +132,7 @@ public class AdminMetricsController {
      * Get tenant summary (counts, totals)
      */
     @GetMapping("/summary")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(summary = "Get tenant usage summary")
     public ApiResponse<Map<String, Object>> getTenantSummary() {
         log.info("Fetching tenant summary");
@@ -159,7 +159,7 @@ public class AdminMetricsController {
      * Reset metrics for a tenant (use with caution)
      */
     @DeleteMapping("/tenants/{tenantId}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(summary = "Reset metrics for a tenant")
     public ApiResponse<String> resetTenantMetrics(@PathVariable Long tenantId) {
         log.warn("Resetting metrics for tenant: {}", tenantId);
@@ -173,7 +173,7 @@ public class AdminMetricsController {
      * Get top N tenants by API calls
      */
     @GetMapping("/top-tenants")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(summary = "Get top tenants by API usage")
     public ApiResponse<Map<String, Object>> getTopTenants(
             @RequestParam(defaultValue = "10") int limit) {
@@ -203,7 +203,7 @@ public class AdminMetricsController {
      * Get cross-tenant metrics summary with statistics
      */
     @GetMapping("/cross-tenant-summary")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(summary = "Get statistical summary across all tenants")
     public ApiResponse<Map<String, Object>> getCrossTenantSummary() {
         log.info("Fetching cross-tenant metrics summary");

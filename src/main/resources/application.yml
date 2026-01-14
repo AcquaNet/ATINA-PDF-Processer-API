@@ -190,3 +190,6 @@ springdoc:
     operations-sorter: alpha
     tags-sorter: alpha
 
+mcp:
+  enabled: true
+

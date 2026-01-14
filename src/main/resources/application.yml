@@ -1,3 +1,23 @@
+
+# ============================================
+# AI / LLM Configuration
+# ============================================
+ai:
+  provider: openai  # openai | anthropic | ollama
+
+  openai:
+    api-key: ${OPENAI_API_KEY}
+    model: gpt-5-mini
+
+  anthropic:
+    api-key: ${ANTHROPIC_API_KEY:your-key-here}
+    model: claude-3-sonnet-20240229
+
+  ollama:
+    base-url: http://localhost:11434
+    model: llama3
+
+
 # ============================================
 # Application Configuration
 # ============================================
@@ -68,6 +88,14 @@ spring:
       max-file-size: 10MB
       max-request-size: 10MB
 
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      chat:
+        options:
+          model: ${ai.openai.model}
+          temperature: 1
+          max-completion-tokens: 4000
 # ============================================
 # Server Configuration
 # ============================================
@@ -161,3 +189,4 @@ springdoc:
     path: /swagger-ui.html
     operations-sorter: alpha
     tags-sorter: alpha
+

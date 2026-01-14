@@ -1,5 +1,5 @@
 // ============================================
-// FILE: controller/AuthController.java
+// FILE: controller/AuthController.java - FIXED VERSION
 // ============================================
 
 package com.atina.invoice.api.controller;
@@ -7,6 +7,8 @@ package com.atina.invoice.api.controller;
 import com.atina.invoice.api.dto.request.LoginRequest;
 import com.atina.invoice.api.dto.response.ApiResponse;
 import com.atina.invoice.api.dto.response.LoginResponse;
+import com.atina.invoice.api.model.User;
+import com.atina.invoice.api.model.Tenant;
 import com.atina.invoice.api.security.JwtTokenProvider;
 import com.atina.invoice.api.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -25,8 +27,8 @@ import org.springframework.web.bind.annotation.*;
 import java.time.Instant;
 
 /**
- * Authentication controller
- * Handles user login and JWT token generation
+ * Authentication controller - FIXED VERSION
+ * Handles user login and JWT token generation with full tenant information
  */
 @Slf4j
 @RestController
@@ -41,57 +43,77 @@ public class AuthController {
 
     /**
      * User login
-     * 
+     *
      * POST /api/v1/auth/login
-     * 
+     *
      * @param request Login credentials
-     * @return JWT token and user info
+     * @return JWT token and user info with tenant details
      */
     @PostMapping("/login")
     @Operation(
-        summary = "User login",
-        description = "Authenticate user and receive JWT token"
+            summary = "User login",
+            description = "Authenticate user and receive JWT token with tenant information"
     )
     public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         log.info("Login attempt for user: {}", request.getUsername());
-        
+
         long start = System.currentTimeMillis();
-        
+
         try {
             // Authenticate user
             Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(
-                    request.getUsername(),
-                    request.getPassword()
-                )
+                    new UsernamePasswordAuthenticationToken(
+                            request.getUsername(),
+                            request.getPassword()
+                    )
             );
-            
+
             // Generate JWT token
             String token = jwtTokenProvider.generateToken(authentication);
-            
+
             // Get token expiration
             Instant expiresAt = jwtTokenProvider.getExpirationFromToken(token);
-            
+
+            // Get full user details with tenant
+            User user = userService.findByUsername(request.getUsername())
+                    .orElseThrow(() -> new BadCredentialsException("User not found"));
+
             // Update last login
             userService.updateLastLogin(request.getUsername());
-            
-            // Build response
+
+            // Build tenant info
+            Tenant tenant = user.getTenant();
+            LoginResponse.TenantInfo tenantInfo = LoginResponse.TenantInfo.builder()
+                    .id(tenant.getId())
+                    .code(tenant.getTenantCode())
+                    .name(tenant.getTenantName())
+                    .subscriptionTier(tenant.getSubscriptionTier())
+                    .maxApiCallsPerMonth(tenant.getMaxApiCallsPerMonth())
+                    .enabled(tenant.isEnabled())
+                    .build();
+
+            // Build response with full user and tenant info
             LoginResponse response = LoginResponse.builder()
-                .token(token)
-                .username(request.getUsername())
-                .expiresAt(expiresAt)
-                .build();
-            
+                    .token(token)
+                    .expiresAt(expiresAt)
+                    .username(user.getUsername())
+                    .fullName(user.getFullName())
+                    .email(user.getEmail())
+                    .role(user.getRole())
+                    .tenant(tenantInfo)
+                    .build();
+
             long duration = System.currentTimeMillis() - start;
-            
-            log.info("Login successful for user: {} ({}ms)", request.getUsername(), duration);
-            
+
+            log.info("Login successful for user: {} (tenant: {}, role: {}) ({}ms)",
+                    user.getUsername(), tenant.getTenantCode(), user.getRole(), duration);
+
             return ApiResponse.success(response, MDC.get("correlationId"), duration);
-            
+
         } catch (BadCredentialsException e) {
             log.warn("Login failed for user: {} - Invalid credentials", request.getUsername());
             throw new BadCredentialsException("Invalid username or password");
-            
+
         } catch (AuthenticationException e) {
             log.error("Login failed for user: {} - {}", request.getUsername(), e.getMessage());
             throw new BadCredentialsException("Authentication failed: " + e.getMessage());
@@ -99,160 +121,135 @@ public class AuthController {
     }
 
     /**
-     * Validate token (optional endpoint)
-     * 
-     * GET /api/v1/auth/validate
-     * 
-     * @return Token validity status
-     */
-    @GetMapping("/validate")
-    @Operation(
-        summary = "Validate JWT token",
-        description = "Check if the provided JWT token is valid"
-    )
-    public ApiResponse<Boolean> validateToken() {
-        log.debug("Token validation requested");
-        
-        // If request reaches here, token is valid (passed through JWT filter)
-        return ApiResponse.success(true, MDC.get("correlationId"), 0L);
-    }
-
-    /**
-     * Refresh token (optional endpoint)
-     * 
+     * Token refresh
+     *
      * POST /api/v1/auth/refresh
-     * 
+     *
      * @return New JWT token
      */
     @PostMapping("/refresh")
     @Operation(
-        summary = "Refresh JWT token",
-        description = "Generate a new JWT token using the current valid token"
+            summary = "Refresh JWT token",
+            description = "Get a new JWT token using valid existing token"
     )
-    public ApiResponse<LoginResponse> refreshToken(Authentication authentication) {
-        log.info("Token refresh requested for user: {}", authentication.getName());
-        
+    public ApiResponse<LoginResponse> refresh(Authentication authentication) {
+        log.info("Token refresh for user: {}", authentication.getName());
+
         long start = System.currentTimeMillis();
-        
-        // Generate new token
-        String newToken = jwtTokenProvider.generateToken(authentication);
-        
-        // Get expiration
-        Instant expiresAt = jwtTokenProvider.getExpirationFromToken(newToken);
-        
-        // Build response
-        LoginResponse response = LoginResponse.builder()
-            .token(newToken)
-            .username(authentication.getName())
-            .expiresAt(expiresAt)
-            .build();
-        
-        long duration = System.currentTimeMillis() - start;
-        
-        return ApiResponse.success(response, MDC.get("correlationId"), duration);
+
+        try {
+            // Generate new token
+            String newToken = jwtTokenProvider.generateToken(authentication);
+            Instant newExpiresAt = jwtTokenProvider.getExpirationFromToken(newToken);
+
+            // Get full user details with tenant
+            User user = userService.findByUsername(authentication.getName())
+                    .orElseThrow(() -> new BadCredentialsException("User not found"));
+
+            // Build tenant info
+            Tenant tenant = user.getTenant();
+            LoginResponse.TenantInfo tenantInfo = LoginResponse.TenantInfo.builder()
+                    .id(tenant.getId())
+                    .code(tenant.getTenantCode())
+                    .name(tenant.getTenantName())
+                    .subscriptionTier(tenant.getSubscriptionTier())
+                    .maxApiCallsPerMonth(tenant.getMaxApiCallsPerMonth())
+                    .enabled(tenant.isEnabled())
+                    .build();
+
+            // Build response
+            LoginResponse response = LoginResponse.builder()
+                    .token(newToken)
+                    .expiresAt(newExpiresAt)
+                    .username(user.getUsername())
+                    .fullName(user.getFullName())
+                    .email(user.getEmail())
+                    .role(user.getRole())
+                    .tenant(tenantInfo)
+                    .build();
+
+            long duration = System.currentTimeMillis() - start;
+
+            log.info("Token refreshed for user: {} ({}ms)", authentication.getName(), duration);
+
+            return ApiResponse.success(response, MDC.get("correlationId"), duration);
+
+        } catch (Exception e) {
+            log.error("Token refresh failed for user: {} - {}", authentication.getName(), e.getMessage());
+            throw new BadCredentialsException("Token refresh failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Logout
+     *
+     * POST /api/v1/auth/logout
+     *
+     * @return Success message
+     */
+    @PostMapping("/logout")
+    @Operation(
+            summary = "User logout",
+            description = "Logout user (client should discard token)"
+    )
+    public ApiResponse<String> logout(Authentication authentication) {
+        log.info("Logout for user: {}", authentication.getName());
+
+        // In a stateless JWT setup, logout is handled client-side by discarding the token
+        // If you want server-side token blacklisting, implement it here
+
+        return ApiResponse.success("Logout successful");
+    }
+
+    /**
+     * Get current user info
+     *
+     * GET /api/v1/auth/me
+     *
+     * @return Current user information with tenant details
+     */
+    @GetMapping("/me")
+    @Operation(
+            summary = "Get current user",
+            description = "Get information about currently authenticated user"
+    )
+    public ApiResponse<LoginResponse> getCurrentUser(Authentication authentication) {
+        log.info("Get current user: {}", authentication.getName());
+
+        long start = System.currentTimeMillis();
+
+        try {
+            // Get full user details with tenant
+            User user = userService.findByUsername(authentication.getName())
+                    .orElseThrow(() -> new BadCredentialsException("User not found"));
+
+            // Build tenant info
+            Tenant tenant = user.getTenant();
+            LoginResponse.TenantInfo tenantInfo = LoginResponse.TenantInfo.builder()
+                    .id(tenant.getId())
+                    .code(tenant.getTenantCode())
+                    .name(tenant.getTenantName())
+                    .subscriptionTier(tenant.getSubscriptionTier())
+                    .maxApiCallsPerMonth(tenant.getMaxApiCallsPerMonth())
+                    .enabled(tenant.isEnabled())
+                    .build();
+
+            // Build response (without token since this is not a login)
+            LoginResponse response = LoginResponse.builder()
+                    .username(user.getUsername())
+                    .fullName(user.getFullName())
+                    .email(user.getEmail())
+                    .role(user.getRole())
+                    .tenant(tenantInfo)
+                    .build();
+
+            long duration = System.currentTimeMillis() - start;
+
+            return ApiResponse.success(response, MDC.get("correlationId"), duration);
+
+        } catch (Exception e) {
+            log.error("Get current user failed for: {} - {}", authentication.getName(), e.getMessage());
+            throw new RuntimeException("Failed to get user info: " + e.getMessage());
+        }
     }
 }
-
-// ============================================
-// USAGE EXAMPLES
-// ============================================
-
-/*
-1. LOGIN
-
-Request:
-POST /api/v1/auth/login
-Content-Type: application/json
-
-{
-  "username": "admin",
-  "password": "admin123"
-}
-
-Response:
-{
-  "success": true,
-  "correlationId": "api-20240110-123456-a1b2c3d4",
-  "timestamp": "2024-01-10T12:34:56.789Z",
-  "duration": 150,
-  "data": {
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "type": "Bearer",
-    "username": "admin",
-    "expiresAt": "2024-01-11T12:34:56.789Z"
-  }
-}
-
-2. VALIDATE TOKEN
-
-Request:
-GET /api/v1/auth/validate
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-
-Response:
-{
-  "success": true,
-  "data": true
-}
-
-3. REFRESH TOKEN
-
-Request:
-POST /api/v1/auth/refresh
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-
-Response:
-{
-  "success": true,
-  "data": {
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "type": "Bearer",
-    "username": "admin",
-    "expiresAt": "2024-01-11T12:34:56.789Z"
-  }
-}
-
-4. LOGIN FAILED
-
-Request:
-POST /api/v1/auth/login
-{
-  "username": "admin",
-  "password": "wrongpassword"
-}
-
-Response:
-{
-  "success": false,
-  "error": {
-    "code": "UNAUTHORIZED",
-    "message": "Invalid username or password",
-    "path": "/api/v1/auth/login"
-  }
-}
-
-5. CURL EXAMPLES
-
-# Login
-curl -X POST http://localhost:8080/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin123"}'
-
-# Save token
-TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin123"}' \
-  | jq -r '.data.token')
-
-# Use token
-curl http://localhost:8080/api/v1/health \
-  -H "Authorization: Bearer $TOKEN"
-
-# Validate token
-curl http://localhost:8080/api/v1/auth/validate \
-  -H "Authorization: Bearer $TOKEN"
-
-# Refresh token
-curl -X POST http://localhost:8080/api/v1/auth/refresh \
-  -H "Authorization: Bearer $TOKEN"
-*/

@@ -8,6 +8,10 @@ import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 
+/**
+ * User entity - Enhanced with multi-tenancy support
+ * Each user belongs to a tenant (company/organization)
+ */
 @Entity
 @Table(name = "users")
 @Data
@@ -32,11 +36,27 @@ public class User {
     @Column
     private String fullName;
 
+    /**
+     * Tenant this user belongs to
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "tenant_id", nullable = false)
+    private Tenant tenant;
+
+    /**
+     * User role within their tenant
+     * Examples: "ADMIN", "USER", "VIEWER"
+     */
+    @Column(nullable = false, length = 50)
+    private String role = "USER";
+
     @Column(nullable = false)
+    @Builder.Default
     private boolean enabled = true;
 
     @Column(nullable = false)
-    private Instant createdAt;
+    @Builder.Default
+    private Instant createdAt = Instant.now();
 
     @Column
     private Instant lastLoginAt;

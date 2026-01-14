@@ -1,6 +1,6 @@
 package com.atina.invoice.api.dto.response;
 
-import io.swagger.v3.oas.annotations.media.Schema;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -8,23 +8,83 @@ import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 
+/**
+ * Login Response - Enhanced with tenant information
+ * Returns JWT token and tenant details to the client
+ */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Login response with JWT token")
 public class LoginResponse {
 
-    @Schema(description = "JWT access token", required = true)
+    /**
+     * JWT token
+     */
+    @JsonProperty("token")
     private String token;
 
-    @Schema(description = "Token type", required = true, example = "Bearer")
-    @Builder.Default
-    private String type = "Bearer";
+    /**
+     * Token expiration time
+     */
+    @JsonProperty("expiresAt")
+    private Instant expiresAt;
 
-    @Schema(description = "Username", required = true)
+    /**
+     * Username
+     */
+    @JsonProperty("username")
     private String username;
 
-    @Schema(description = "Token expiration time")
-    private Instant expiresAt;
+    /**
+     * User's full name
+     */
+    @JsonProperty("fullName")
+    private String fullName;
+
+    /**
+     * User's email
+     */
+    @JsonProperty("email")
+    private String email;
+
+    /**
+     * User's role within their tenant
+     */
+    @JsonProperty("role")
+    private String role;
+
+    /**
+     * Tenant information
+     */
+    @JsonProperty("tenant")
+    private TenantInfo tenant;
+
+    /**
+     * Nested class for tenant information
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TenantInfo {
+
+        @JsonProperty("id")
+        private Long id;
+
+        @JsonProperty("code")
+        private String code;
+
+        @JsonProperty("name")
+        private String name;
+
+        @JsonProperty("subscriptionTier")
+        private String subscriptionTier;
+
+        @JsonProperty("maxApiCallsPerMonth")
+        private Long maxApiCallsPerMonth;
+
+        @JsonProperty("enabled")
+        private boolean enabled;
+    }
 }

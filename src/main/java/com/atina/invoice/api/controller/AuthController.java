@@ -78,7 +78,6 @@ public class AuthController {
             // Build response
             LoginResponse response = LoginResponse.builder()
                 .token(token)
-                .type("Bearer")
                 .username(request.getUsername())
                 .expiresAt(expiresAt)
                 .build();
@@ -144,7 +143,6 @@ public class AuthController {
         // Build response
         LoginResponse response = LoginResponse.builder()
             .token(newToken)
-            .type("Bearer")
             .username(authentication.getName())
             .expiresAt(expiresAt)
             .build();

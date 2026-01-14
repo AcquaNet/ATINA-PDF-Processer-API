@@ -1,44 +1,29 @@
 package com.atina.invoice.api.config;
 
-import org.springframework.beans.factory.annotation.Value;
+import com.atina.invoice.api.security.TenantInterceptor;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+/**
+ * Web MVC Configuration
+ * Registers the TenantInterceptor to extract tenant from JWT on every request
+ */
 @Configuration
+@RequiredArgsConstructor
 public class WebConfig implements WebMvcConfigurer {
 
-    @Value("${app.cors.allowed-origins}")
-    private String allowedOrigins;
-
-    @Value("${app.cors.allowed-methods}")
-    private String allowedMethods;
-
-    @Value("${app.cors.allowed-headers}")
-    private String allowedHeaders;
-
-    @Value("${app.cors.max-age}")
-    private long maxAge;
-
-    private final CorrelationIdInterceptor correlationIdInterceptor;
-
-    public WebConfig(CorrelationIdInterceptor correlationIdInterceptor) {
-        this.correlationIdInterceptor = correlationIdInterceptor;
-    }
-
-    @Override
-    public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/api/**")
-                .allowedOrigins(allowedOrigins.split(","))
-                .allowedMethods(allowedMethods.split(","))
-                .allowedHeaders(allowedHeaders.split(","))
-                .maxAge(maxAge)
-                .allowCredentials(true);
-    }
+    private final TenantInterceptor tenantInterceptor;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(correlationIdInterceptor);
+        registry.addInterceptor(tenantInterceptor)
+                .addPathPatterns("/api/**")  // Apply to all API endpoints
+                .excludePathPatterns(
+                        "/api/v1/auth/**",      // Exclude auth endpoints (before login)
+                        "/api/v1/health",       // Exclude health check
+                        "/api/v1/info"          // Exclude info endpoint
+                );
     }
 }

@@ -89,7 +89,17 @@ public class MultiTenancyDataInitializer {
 
             createUserIfNotExists(
                 userRepository,
-                "acme-user",
+                "acme-user-1",
+                "user123",
+                "ACME User",
+                "user@acme.com",
+                "USER",
+                acmeTenant
+            );
+
+            createUserIfNotExists(
+                userRepository,
+                "acme-user-2",
                 "user123",
                 "ACME User",
                 "user@acme.com",
@@ -126,7 +136,8 @@ public class MultiTenancyDataInitializer {
             log.info("=".repeat(80));
             log.info("Demo Users Created:");
             log.info("  • acme-admin / admin123 (ACME - ADMIN)");
-            log.info("  • acme-user / user123 (ACME - USER)");
+            log.info("  • acme-user-1 / user123 (ACME - USER)");
+            log.info("  • acme-user-2 / user123 (ACME - USER)");
             log.info("  • globex-admin / admin123 (GLOBEX - ADMIN)");
             log.info("  • initech-user / user123 (INITECH - USER)");
             log.info("=".repeat(80));

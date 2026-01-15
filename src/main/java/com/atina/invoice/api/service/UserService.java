@@ -4,6 +4,8 @@ import com.atina.invoice.api.model.User;
 import com.atina.invoice.api.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -12,6 +14,8 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -25,23 +29,29 @@ public class UserService implements UserDetailsService {
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
+
+        Collection<GrantedAuthority> authorities = new ArrayList<>();
+        authorities.add(new SimpleGrantedAuthority("ROLE_" + user.getRole()));
         
         return org.springframework.security.core.userdetails.User.builder()
                 .username(user.getUsername())
                 .password(user.getPassword())
-                .authorities(new ArrayList<>())
+                .authorities(authorities)
                 .disabled(!user.isEnabled())
                 .build();
     }
 
-    public User findByUsername(String username) {
-        return userRepository.findByUsername(username)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
+    public Optional<User> findByUsername(String username) {
+        return userRepository.findByUsername(username);
     }
 
     public void updateLastLogin(String username) {
-        User user = findByUsername(username);
+        User user = findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found: " + username));
+
         user.setLastLoginAt(Instant.now());
         userRepository.save(user);
+
+        log.debug("Updated last login for user: {}", username);
     }
 }

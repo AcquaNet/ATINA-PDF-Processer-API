@@ -27,8 +27,6 @@
         <!-- Versions -->
         <springdoc.version>2.3.0</springdoc.version>
         <jjwt.version>0.12.3</jjwt.version>
-        <jackson.version>2.15.2</jackson.version>
-
         <spring-ai.version>1.0.0-M4</spring-ai.version>
 
     </properties>
@@ -78,6 +76,15 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- ========================================
+             Jackson YAML (required by Engine)
+             ======================================== -->
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
         </dependency>
 
         <!-- ========================================

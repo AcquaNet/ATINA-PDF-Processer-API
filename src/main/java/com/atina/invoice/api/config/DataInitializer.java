@@ -23,7 +23,7 @@ public class DataInitializer {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
-    @Bean
+    // @Bean
     public CommandLineRunner initData() {
         return args -> {
             log.info("Initializing database with default users...");

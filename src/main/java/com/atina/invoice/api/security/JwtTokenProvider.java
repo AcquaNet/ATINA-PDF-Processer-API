@@ -1,12 +1,12 @@
 package com.atina.invoice.api.security;
 
+import com.atina.invoice.api.model.User;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
@@ -14,6 +14,10 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
 
+/**
+ * JWT Token Provider - Enhanced with multi-tenancy support
+ * Includes tenant information in JWT claims for tenant isolation
+ */
 @Slf4j
 @Component
 public class JwtTokenProvider {
@@ -32,37 +36,100 @@ public class JwtTokenProvider {
     @PostConstruct
     public void init() {
         this.key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
-        log.info("JWT Token Provider initialized");
+        log.info("JWT Token Provider initialized with multi-tenancy support");
     }
 
+    /**
+     * Generate token from Authentication
+     */
     public String generateToken(Authentication authentication) {
-        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
-        return generateToken(userDetails.getUsername());
+        org.springframework.security.core.userdetails.User userDetails =
+                (org.springframework.security.core.userdetails.User) authentication.getPrincipal();
+        return generateToken(userDetails.getUsername(), null, null);
     }
 
-    public String generateToken(String username) {
+    /**
+     * Generate token with tenant information
+     */
+    public String generateToken(User user) {
+        return generateToken(
+                user.getUsername(),
+                user.getTenant().getId(),
+                user.getTenant().getTenantCode()
+        );
+    }
+
+    /**
+     * Generate token with username, tenantId, and tenantCode
+     */
+    public String generateToken(String username, Long tenantId, String tenantCode) {
         Instant now = Instant.now();
         Instant expiryDate = now.plusMillis(jwtExpiration);
 
-        return Jwts.builder()
+        JwtBuilder builder = Jwts.builder()
                 .subject(username)
                 .issuer(jwtIssuer)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiryDate))
-                .signWith(key)
-                .compact();
+                .signWith(key);
+
+        // Add tenant claims if provided
+        if (tenantId != null) {
+            builder.claim("tenantId", tenantId);
+        }
+        if (tenantCode != null) {
+            builder.claim("tenantCode", tenantCode);
+        }
+
+        return builder.compact();
     }
 
+    /**
+     * Get username from token
+     */
     public String getUsernameFromToken(String token) {
-        Claims claims = Jwts.parser()
+        Claims claims = getClaims(token);
+        return claims.getSubject();
+    }
+
+    /**
+     * Get tenant ID from token
+     */
+    public Long getTenantIdFromToken(String token) {
+        Claims claims = getClaims(token);
+        Object tenantId = claims.get("tenantId");
+        if (tenantId == null) {
+            return null;
+        }
+        // Handle both Integer and Long
+        if (tenantId instanceof Integer) {
+            return ((Integer) tenantId).longValue();
+        }
+        return (Long) tenantId;
+    }
+
+    /**
+     * Get tenant code from token
+     */
+    public String getTenantCodeFromToken(String token) {
+        Claims claims = getClaims(token);
+        return (String) claims.get("tenantCode");
+    }
+
+    /**
+     * Get all claims from token
+     */
+    private Claims getClaims(String token) {
+        return Jwts.parser()
                 .verifyWith(key)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
-
-        return claims.getSubject();
     }
 
+    /**
+     * Validate token
+     */
     public boolean validateToken(String token) {
         try {
             Jwts.parser()
@@ -84,13 +151,11 @@ public class JwtTokenProvider {
         return false;
     }
 
+    /**
+     * Get expiration from token
+     */
     public Instant getExpirationFromToken(String token) {
-        Claims claims = Jwts.parser()
-                .verifyWith(key)
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
-
+        Claims claims = getClaims(token);
         return claims.getExpiration().toInstant();
     }
 }

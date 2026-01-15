@@ -9,11 +9,16 @@ import lombok.NoArgsConstructor;
 import java.time.Instant;
 
 /**
- * Metrics entity
- * Stores application metrics persistently in database
+ * Metrics entity - Enhanced with multi-tenancy support
+ * Stores application metrics per tenant for usage tracking and billing
  */
 @Entity
-@Table(name = "metrics")
+@Table(name = "metrics",
+        indexes = {
+                @Index(name = "idx_tenant_metric", columnList = "tenant_id, metric_key"),
+                @Index(name = "idx_metric_key", columnList = "metric_key"),
+                @Index(name = "idx_created_at", columnList = "created_at")
+        })
 @Data
 @Builder
 @NoArgsConstructor
@@ -25,16 +30,30 @@ public class Metrics {
     private Long id;
 
     /**
-     * Metric key (e.g., "extractions.total", "extractions.success")
+     * Tenant this metric belongs to (null = system-wide metric)
      */
-    @Column(nullable = false, unique = true, length = 100)
+    @Column(name = "tenant_id")
+    private Long tenantId;
+
+    /**
+     * Metric key (e.g., "extractions.total", "extractions.success")
+     * Combined with tenant_id to form unique tracking key
+     */
+    @Column(nullable = false, length = 100)
     private String metricKey;
 
     /**
-     * Metric value
+     * Metric value (counter)
      */
     @Column(nullable = false)
     private Long metricValue;
+
+    /**
+     * Optional: metric metadata as JSON string
+     * Can store additional context like {operation: "extract", duration_ms: 1234}
+     */
+    @Column(columnDefinition = "TEXT")
+    private String metadata;
 
     /**
      * Last updated timestamp

@@ -8,6 +8,11 @@ import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 
+/**
+ * Entity para jobs de extracción asíncrona
+ *
+ * Modificado para soportar storage temporal genérico
+ */
 @Entity
 @Table(name = "jobs")
 @Data
@@ -50,6 +55,21 @@ public class Job {
 
     @Column
     private Long durationMs;
+
+    /**
+     * Storage ID para PDFs (campo original)
+     * @deprecated Usar storageId para nuevo código
+     */
+    @Deprecated
+    @Column(name = "pdf_storage_id")
+    private String pdfStorageId;
+
+    /**
+     * Storage ID genérico para inputs temporales
+     * Nuevo campo para async unificado
+     */
+    @Column(name = "storage_id")
+    private String storageId;
 
     @PrePersist
     protected void onCreate() {

@@ -212,41 +212,7 @@ public class ExtractionController {
             );
         }
     }
-
-    /**
-     * Obtener solo resultado del job (DEPRECATED - usar getJob)
-     *
-     * GET /api/v1/extract/async/{jobId}/result
-     */
-    @GetMapping("/async/{jobId}/result")
-    @Deprecated
-    @Operation(
-            summary = "Get job result (deprecated)",
-            description = "Deprecated: Use GET /async/{jobId} instead. Returns only result, not full status."
-    )
-    public ApiResponse<JsonNode> getJobResult(@PathVariable String jobId) {
-        log.debug("Job result requested: {}", jobId);
-
-        long start = System.currentTimeMillis();
-
-        try {
-            JsonNode result = jobService.getJobResult(jobId);
-
-            long duration = System.currentTimeMillis() - start;
-
-            return ApiResponse.success(result, MDC.get("correlationId"), duration);
-
-        } catch (Exception e) {
-            log.error("Failed to get job result: {}", jobId, e);
-            long duration = System.currentTimeMillis() - start;
-            return ApiResponse.error(
-                    "Failed to get job result: " + e.getMessage(),
-                    MDC.get("correlationId"),
-                    duration
-            );
-        }
-    }
-
+  
     // ============================================================
     // HELPER METHODS
     // ============================================================

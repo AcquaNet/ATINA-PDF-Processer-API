@@ -2,6 +2,7 @@ package com.atina.invoice.api.controller;
 
 import com.atina.invoice.api.dto.request.ValidateOptions;
 import com.atina.invoice.api.dto.response.ApiResponse;
+import com.atina.invoice.api.dto.response.ValidationResult;
 import com.atina.invoice.api.service.ValidationService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -49,6 +50,11 @@ public class ValidationController {
      * - templatePath: Path al archivo
      *
      * Valida estructura y reglas de negocio sin ejecutar extracción.
+     *
+     * IMPORTANTE - Códigos HTTP:
+     * - 200 OK: Validación ejecutada correctamente (template válido o inválido)
+     * - 400 Bad Request: Request mal formado (falta template, JSON inválido)
+     * - 500 Internal Server Error: Error del servidor
      */
     @PostMapping(consumes = {
             MediaType.APPLICATION_JSON_VALUE,
@@ -64,10 +70,16 @@ public class ValidationController {
                     - templateFile: Upload template file
                     - templatePath: Path to template in filesystem
                     
-                    Returns validation result with any errors or warnings found.
+                    Returns HTTP 200 with validation result:
+                    - success: true (validation executed)
+                    - data.valid: true/false (template valid or not)
+                    - data.errors: array of validation errors (if any)
+                    - data.warnings: array of warnings (if any)
+                    
+                    Returns HTTP 400 if request is malformed.
                     """
     )
-    public ApiResponse<JsonNode> validateTemplate(
+    public ApiResponse<ValidationResult> validateTemplate(
             // Template inputs
             @RequestPart(value = "template", required = false) String templateJson,
             @RequestPart(value = "templateFile", required = false) MultipartFile templateFile,
@@ -91,16 +103,38 @@ public class ValidationController {
             JsonNode template = processTemplate(templateJson, templateFile, templatePath);
 
             // 4. Validar template
-            JsonNode result = validationService.validateTemplate(template, options);
+            JsonNode rawResult = validationService.validateTemplate(template, options);
+
+            // 5. Convertir a ValidationResult estructurado (incluir template original)
+            ValidationResult result = convertToValidationResult(rawResult, template);
 
             long duration = System.currentTimeMillis() - start;
 
-            log.info("Template validation completed in {}ms", duration);
+            // Log resultado
+            if (result.isValid()) {
+                log.info("Template validation completed successfully in {}ms - Template is VALID", duration);
+            } else {
+                log.info("Template validation completed in {}ms - Template is INVALID ({} errors, {} warnings)",
+                        duration, result.getErrors().size(), result.getWarnings().size());
+            }
 
+            // CRÍTICO: Siempre retornar success=true con HTTP 200
+            // El campo valid indica si el template es válido o no
             return ApiResponse.success(result, MDC.get("correlationId"), duration);
 
+        } catch (IllegalArgumentException e) {
+            // Request mal formado (falta template, múltiples inputs, etc)
+            log.error("Validation request malformed", e);
+            long duration = System.currentTimeMillis() - start;
+            return ApiResponse.error(
+                    e.getMessage(),
+                    MDC.get("correlationId"),
+                    duration
+            );
+
         } catch (Exception e) {
-            log.error("Template validation failed", e);
+            // Error del servidor
+            log.error("Template validation failed due to server error", e);
             long duration = System.currentTimeMillis() - start;
             return ApiResponse.error(
                     "Template validation failed: " + e.getMessage(),
@@ -149,6 +183,86 @@ public class ValidationController {
         }
     }
 
+    /**
+     * Convierte resultado crudo del ValidationService a ValidationResult estructurado
+     */
+    private ValidationResult convertToValidationResult(JsonNode rawResult, JsonNode originalTemplate) {
+        ValidationResult result = new ValidationResult();
+
+        // Siempre incluir el template procesado si está disponible
+        if (rawResult.has("processedTemplate")) {
+            result.setProcessedTemplate(rawResult.get("processedTemplate"));
+        } else if (rawResult.has("template")) {
+            result.setProcessedTemplate(rawResult.get("template"));
+        } else {
+            // Si el servicio no retorna template procesado, usar el original
+            result.setProcessedTemplate(originalTemplate);
+        }
+
+        // Si el servicio retorna estructura con "validations"
+        if (rawResult.has("validations")) {
+            JsonNode validations = rawResult.get("validations");
+
+            for (JsonNode validation : validations) {
+                String path = validation.has("path") ? validation.get("path").asText() : "unknown";
+                String type = validation.has("type") ? validation.get("type").asText() : "error";
+                String message = validation.has("message") ? validation.get("message").asText() : "Validation error";
+
+                // Crear error estructurado
+                ValidationResult.ValidationError error = new ValidationResult.ValidationError();
+                error.setPath(path);
+                error.setType(type);
+                error.setMessage(cleanErrorMessage(message));
+
+                result.getErrors().add(error);
+            }
+
+            // Si hay errores, template es inválido
+            result.setValid(result.getErrors().isEmpty());
+        }
+        // Si el servicio retorna estructura estándar con valid/errors/warnings
+        else if (rawResult.has("valid")) {
+            result.setValid(rawResult.get("valid").asBoolean());
+
+            if (rawResult.has("errors")) {
+                for (JsonNode error : rawResult.get("errors")) {
+                    ValidationResult.ValidationError err = objectMapper.convertValue(
+                            error, ValidationResult.ValidationError.class);
+                    result.getErrors().add(err);
+                }
+            }
+
+            if (rawResult.has("warnings")) {
+                for (JsonNode warning : rawResult.get("warnings")) {
+                    ValidationResult.ValidationWarning warn = objectMapper.convertValue(
+                            warning, ValidationResult.ValidationWarning.class);
+                    result.getWarnings().add(warn);
+                }
+            }
+        }
+        // Fallback: asumir válido si no hay información
+        else {
+            result.setValid(true);
+        }
+
+        return result;
+    }
+
+    /**
+     * Limpia mensaje de error para hacerlo más legible
+     */
+    private String cleanErrorMessage(String message) {
+        if (message == null) {
+            return "Validation error";
+        }
+
+        // Remover "Template validation failed:\n  - " del principio
+        message = message.replace("Template validation failed:\n  - ", "");
+        message = message.replace("Template validation failed:", "").trim();
+
+        return message;
+    }
+
     // ============================================================
     // HELPER METHODS
     // ============================================================
@@ -193,3 +307,4 @@ public class ValidationController {
         return objectMapper.readValue(optionsJson, ValidateOptions.class);
     }
 }
+

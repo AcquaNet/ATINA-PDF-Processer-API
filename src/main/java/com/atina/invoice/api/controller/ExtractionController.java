@@ -110,16 +110,19 @@ public class ExtractionController {
         long start = System.currentTimeMillis();
 
         try {
-            // 1. Parsear options
+            // 1. Validar inputs
+            validateInputs(doclingFile, doclingPath, templateJson, templateFile, templatePath);
+
+            // 2. Parsear options
             ExtractionOptions options = parseOptions(optionsJson);
 
-            // 2. Procesar PDF → Docling JSON
+            // 3. Procesar PDF → Docling JSON
             JsonNode docling = processDocling(doclingFile, doclingPath);
 
-            // 3. Procesar Template
+            // 4. Procesar Template
             JsonNode template = processTemplate(templateJson, templateFile, templatePath);
 
-            // 4. Extraer datos
+            // 5. Extraer datos
             JsonNode result = extractionService.extract(docling, template, options);
 
             long duration = System.currentTimeMillis() - start;
@@ -184,16 +187,19 @@ public class ExtractionController {
         long start = System.currentTimeMillis();
 
         try {
-            // 1. Parsear options
+            // 1. Validar inputs
+            validateInputs(doclingFile, doclingPath, templateJson, templateFile, templatePath);
+
+            // 2. Parsear options
             ExtractionOptions options = parseOptions(optionsJson);
 
-            // 2. Guardar inputs temporalmente SIN procesarlos
+            // 3. Guardar inputs temporalmente SIN procesarlos
             String storageId = saveInputsTemporarily(
                     doclingFile, doclingPath,
                     templateJson, templateFile, templatePath
             );
 
-            // 3. Crear job
+            // 4. Crear job
             String inputType = detectInputType(doclingFile, doclingPath);
             Job job = jobService.createJobWithStorage(
                     storageId,
@@ -202,10 +208,10 @@ public class ExtractionController {
                     MDC.get("correlationId")
             );
 
-            // 4. Procesar async - NO ESPERA
+            // 5. Procesar async - NO ESPERA
             jobService.processJobAsync(job.getId());
 
-            // 5. Retornar inmediatamente
+            // 6. Retornar inmediatamente
             JobResponse response = buildJobResponse(job);
 
             long duration = System.currentTimeMillis() - start;
@@ -234,7 +240,7 @@ public class ExtractionController {
             description = "Get current status of async extraction job. Includes result when completed."
     )
     public ApiResponse<JobResponse> getJob(@PathVariable String jobId) {
-        log.info("Job status requested: {}", jobId);
+        log.debug("Job status requested: {}", jobId);
 
         long start = System.currentTimeMillis();
 
@@ -267,7 +273,7 @@ public class ExtractionController {
             description = "Deprecated: Use GET /async/{jobId} instead."
     )
     public ApiResponse<JsonNode> getJobResult(@PathVariable String jobId) {
-        log.info("Job result requested: {}", jobId);
+        log.debug("Job result requested: {}", jobId);
 
         long start = System.currentTimeMillis();
 
@@ -306,7 +312,7 @@ public class ExtractionController {
 
         if (doclingFile != null && !doclingFile.isEmpty()) {
             // Opción 1: PDF como File
-            log.info("Processing PDF from file: {}", doclingFile.getOriginalFilename());
+            log.debug("Processing PDF from file: {}", doclingFile.getOriginalFilename());
 
             if (isPdf(doclingFile.getOriginalFilename())) {
                 log.info("Converting PDF file to Docling JSON");
@@ -319,14 +325,9 @@ public class ExtractionController {
 
         } else if (doclingPath != null && !doclingPath.isBlank()) {
             // Opción 2: PDF como Path
-            doclingPath = doclingPath.trim();
-            log.info("Processing PDF from path: {}", doclingPath);
+            log.debug("Processing PDF from path: {}", doclingPath);
 
-            boolean isPdf = isPdf(doclingPath);
-
-            log.info("Processing PDF. is PDF? : {}", isPdf);
-
-            if (isPdf) {
+            if (isPdf(doclingPath)) {
                 log.info("Converting PDF from path to Docling JSON");
 
                 // Leer PDF y crear MultipartFile
@@ -366,17 +367,17 @@ public class ExtractionController {
 
         if (templateJson != null && !templateJson.isBlank()) {
             // Opción 1: Template como JSON texto
-            log.info("Processing template from JSON text");
+            log.debug("Processing template from JSON text");
             return objectMapper.readTree(templateJson);
 
         } else if (templateFile != null && !templateFile.isEmpty()) {
             // Opción 2: Template como File
-            log.info("Processing template from file: {}", templateFile.getOriginalFilename());
+            log.debug("Processing template from file: {}", templateFile.getOriginalFilename());
             return objectMapper.readTree(templateFile.getInputStream());
 
         } else if (templatePath != null && !templatePath.isBlank()) {
             // Opción 3: Template como Path
-            log.info("Processing template from path: {}", templatePath);
+            log.debug("Processing template from path: {}", templatePath);
             return objectMapper.readTree(new File(templatePath));
 
         } else {
@@ -434,7 +435,7 @@ public class ExtractionController {
             );
         }
 
-        log.info("Saved inputs temporarily: {}", storageId);
+        log.debug("Saved inputs temporarily: {}", storageId);
 
         return storageId;
     }
@@ -442,6 +443,58 @@ public class ExtractionController {
     // ============================================================
     // HELPER METHODS
     // ============================================================
+
+    /**
+     * Valida que se hayan proporcionado los inputs requeridos
+     *
+     * Requerimientos:
+     * - Al menos uno: doclingFile o doclingPath (PDF)
+     * - Al menos uno: template, templateFile o templatePath
+     *
+     * @throws IllegalArgumentException si falta algún input requerido
+     */
+    private void validateInputs(
+            MultipartFile doclingFile, String doclingPath,
+            String templateJson, MultipartFile templateFile, String templatePath
+    ) {
+        // Validar PDF input
+        boolean hasPdfFile = doclingFile != null && !doclingFile.isEmpty();
+        boolean hasPdfPath = doclingPath != null && !doclingPath.isBlank();
+
+        if (!hasPdfFile && !hasPdfPath) {
+            throw new IllegalArgumentException(
+                    "PDF input is required. Must provide either 'doclingFile' or 'doclingPath'"
+            );
+        }
+
+        // Validar Template input
+        boolean hasTemplateJson = templateJson != null && !templateJson.isBlank();
+        boolean hasTemplateFile = templateFile != null && !templateFile.isEmpty();
+        boolean hasTemplatePath = templatePath != null && !templatePath.isBlank();
+
+        if (!hasTemplateJson && !hasTemplateFile && !hasTemplatePath) {
+            throw new IllegalArgumentException(
+                    "Template input is required. Must provide one of: 'template', 'templateFile', or 'templatePath'"
+            );
+        }
+
+        // Validar que no se proporcionen múltiples inputs del mismo tipo
+        if (hasPdfFile && hasPdfPath) {
+            throw new IllegalArgumentException(
+                    "Cannot provide both 'doclingFile' and 'doclingPath'. Choose one."
+            );
+        }
+
+        int templateInputs = (hasTemplateJson ? 1 : 0) +
+                (hasTemplateFile ? 1 : 0) +
+                (hasTemplatePath ? 1 : 0);
+
+        if (templateInputs > 1) {
+            throw new IllegalArgumentException(
+                    "Cannot provide multiple template inputs. Choose one of: 'template', 'templateFile', or 'templatePath'"
+            );
+        }
+    }
 
     /**
      * Parsea options desde JSON string

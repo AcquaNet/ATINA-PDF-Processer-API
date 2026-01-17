@@ -30,7 +30,7 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Servicio para gestión de jobs asíncronos
  *
- * Modificado para soportar estructura flexible:
+ * Soporta estructura flexible:
  * - PDF: File o Path
  * - Template: JSON, File o Path
  */
@@ -176,7 +176,7 @@ public class JobService {
      * Procesa job de forma asíncrona (ASYNC REAL con estructura flexible)
      *
      * Soporta:
-     * - PDF: docling.pdf o docling-path.txt
+     * - PDF: input.pdf o pdf-path.txt
      * - Template: template.json o template-path.txt
      */
     @Async("jobExecutor")
@@ -199,8 +199,8 @@ public class JobService {
 
             log.debug("Job {}: Loading inputs from storage {}", jobId, storageId);
 
-            // 3. Procesar PDF → Docling JSON
-            JsonNode docling = processDoclingFromStorage(storagePath, jobId, job);
+            // 3. Procesar PDF → Formato interno
+            JsonNode processedData = processPdfFromStorage(storagePath, jobId, job);
 
             // 4. Procesar Template
             JsonNode template = processTemplateFromStorage(storagePath, jobId, job);
@@ -216,7 +216,7 @@ public class JobService {
 
             // 6. Ejecutar extracción
             log.debug("Job {}: Extracting data", jobId);
-            JsonNode result = extractionService.extract(docling, template, options);
+            JsonNode result = extractionService.extract(processedData, template, options);
 
             job.setProgress(90);
             jobRepository.save(job);
@@ -265,43 +265,43 @@ public class JobService {
     }
 
     /**
-     * Procesa PDF desde storage y convierte a Docling JSON
+     * Procesa PDF desde storage y convierte a formato interno
      *
      * Soporta:
-     * - docling.pdf: PDF guardado directamente
-     * - docling-path.txt: Path al PDF
+     * - input.pdf: PDF guardado directamente
+     * - pdf-path.txt: Path al PDF
      */
-    private JsonNode processDoclingFromStorage(Path storagePath, String jobId, Job job)
+    private JsonNode processPdfFromStorage(Path storagePath, String jobId, Job job)
             throws IOException {
 
-        Path pdfFile = storagePath.resolve("docling.pdf");
-        Path pdfPathFile = storagePath.resolve("docling-path.txt");
+        Path pdfFile = storagePath.resolve("input.pdf");
+        Path pdfPathFile = storagePath.resolve("pdf-path.txt");
 
         if (Files.exists(pdfFile)) {
             // PDF guardado directamente
-            log.info("Job {}: Converting PDF to Docling JSON", jobId);
+            log.info("Job {}: Converting PDF to internal format", jobId);
             job.setProgress(20);
             jobRepository.save(job);
 
             byte[] pdfBytes = Files.readAllBytes(pdfFile);
             MultipartFile pdfMultipart = new ByteArrayMultipartFile(
                     "file",
-                    "docling.pdf",
+                    "input.pdf",
                     "application/pdf",
                     pdfBytes
             );
 
-            JsonNode docling = doclingService.convertPdf(pdfMultipart);
+            JsonNode processedData = doclingService.convertPdf(pdfMultipart);
 
             job.setProgress(35);
             jobRepository.save(job);
 
-            return docling;
+            return processedData;
 
         } else if (Files.exists(pdfPathFile)) {
             // Path al PDF
             String pdfPath = Files.readString(pdfPathFile).trim();
-            log.info("Job {}: Converting PDF from path {} to Docling JSON", jobId, pdfPath);
+            log.info("Job {}: Converting PDF from path {} to internal format", jobId, pdfPath);
 
             job.setProgress(20);
             jobRepository.save(job);
@@ -314,12 +314,12 @@ public class JobService {
                     pdfBytes
             );
 
-            JsonNode docling = doclingService.convertPdf(pdfMultipart);
+            JsonNode processedData = doclingService.convertPdf(pdfMultipart);
 
             job.setProgress(35);
             jobRepository.save(job);
 
-            return docling;
+            return processedData;
 
         } else {
             throw new IllegalStateException("No PDF input found in storage: " + storagePath);

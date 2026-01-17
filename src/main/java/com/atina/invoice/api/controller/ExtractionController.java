@@ -53,11 +53,11 @@ public class ExtractionController {
      *
      * POST /api/v1/extract
      *
-     * PDF (Docling):
-     * - doclingFile: PDF como archivo
-     * - doclingPath: Path al PDF
+     * PDF Input:
+     * - pdfFile: PDF como archivo
+     * - pdfPath: Path al PDF
      *
-     * Template:
+     * Template Input:
      * - template: JSON directo (texto)
      * - templateFile: Archivo JSON
      * - templatePath: Path al archivo
@@ -80,22 +80,22 @@ public class ExtractionController {
                     Extract invoice data from PDF and template.
                     
                     PDF Input (choose one):
-                    - doclingFile: Upload PDF file
-                    - doclingPath: Path to PDF in filesystem
+                    - pdfFile: Upload PDF file
+                    - pdfPath: Path to PDF in filesystem
                     
                     Template Input (choose one):
-                    - template: JSON object directly
+                    - template: JSON object as string
                     - templateFile: Upload template file
                     - templatePath: Path to template in filesystem
                     
                     All combinations are supported.
-                    Returns result immediately (5-15 seconds for PDF conversion).
+                    Returns result immediately (5-15 seconds for PDF processing).
                     """
     )
     public ApiResponse<JsonNode> extract(
             // PDF inputs
-            @RequestPart(value = "doclingFile", required = false) MultipartFile doclingFile,
-            @RequestPart(value = "doclingPath", required = false) String doclingPath,
+            @RequestPart(value = "pdfFile", required = false) MultipartFile pdfFile,
+            @RequestPart(value = "pdfPath", required = false) String pdfPath,
 
             // Template inputs
             @RequestPart(value = "template", required = false) String templateJson,
@@ -111,19 +111,19 @@ public class ExtractionController {
 
         try {
             // 1. Validar inputs
-            validateInputs(doclingFile, doclingPath, templateJson, templateFile, templatePath);
+            validateInputs(pdfFile, pdfPath, templateJson, templateFile, templatePath);
 
             // 2. Parsear options
             ExtractionOptions options = parseOptions(optionsJson);
 
-            // 3. Procesar PDF → Docling JSON
-            JsonNode docling = processDocling(doclingFile, doclingPath);
+            // 3. Procesar PDF → JSON interno
+            JsonNode processedData = processPdf(pdfFile, pdfPath);
 
             // 4. Procesar Template
             JsonNode template = processTemplate(templateJson, templateFile, templatePath);
 
             // 5. Extraer datos
-            JsonNode result = extractionService.extract(docling, template, options);
+            JsonNode result = extractionService.extract(processedData, template, options);
 
             long duration = System.currentTimeMillis() - start;
 
@@ -171,8 +171,8 @@ public class ExtractionController {
     )
     public ApiResponse<JobResponse> extractAsync(
             // PDF inputs
-            @RequestPart(value = "doclingFile", required = false) MultipartFile doclingFile,
-            @RequestPart(value = "doclingPath", required = false) String doclingPath,
+            @RequestPart(value = "pdfFile", required = false) MultipartFile pdfFile,
+            @RequestPart(value = "pdfPath", required = false) String pdfPath,
 
             // Template inputs
             @RequestPart(value = "template", required = false) String templateJson,
@@ -188,19 +188,19 @@ public class ExtractionController {
 
         try {
             // 1. Validar inputs
-            validateInputs(doclingFile, doclingPath, templateJson, templateFile, templatePath);
+            validateInputs(pdfFile, pdfPath, templateJson, templateFile, templatePath);
 
             // 2. Parsear options
             ExtractionOptions options = parseOptions(optionsJson);
 
             // 3. Guardar inputs temporalmente SIN procesarlos
             String storageId = saveInputsTemporarily(
-                    doclingFile, doclingPath,
+                    pdfFile, pdfPath,
                     templateJson, templateFile, templatePath
             );
 
             // 4. Crear job
-            String inputType = detectInputType(doclingFile, doclingPath);
+            String inputType = detectInputType(pdfFile, pdfPath);
             Job job = jobService.createJobWithStorage(
                     storageId,
                     inputType,
@@ -300,55 +300,55 @@ public class ExtractionController {
     // ============================================================
 
     /**
-     * Procesa PDF (de File o Path) y convierte a Docling JSON
+     * Procesa PDF (de File o Path) y convierte a formato interno
      *
-     * @param doclingFile PDF como archivo (opcional)
-     * @param doclingPath Path al PDF (opcional)
-     * @return Docling JSON
+     * @param pdfFile PDF como archivo (opcional)
+     * @param pdfPath Path al PDF (opcional)
+     * @return Datos procesados en formato JSON
      * @throws IOException si hay error de lectura/conversión
      */
-    private JsonNode processDocling(MultipartFile doclingFile, String doclingPath)
+    private JsonNode processPdf(MultipartFile pdfFile, String pdfPath)
             throws IOException {
 
-        if (doclingFile != null && !doclingFile.isEmpty()) {
+        if (pdfFile != null && !pdfFile.isEmpty()) {
             // Opción 1: PDF como File
-            log.debug("Processing PDF from file: {}", doclingFile.getOriginalFilename());
+            log.debug("Processing PDF from file: {}", pdfFile.getOriginalFilename());
 
-            if (isPdf(doclingFile.getOriginalFilename())) {
-                log.info("Converting PDF file to Docling JSON");
-                return doclingService.convertPdf(doclingFile);
+            if (isPdf(pdfFile.getOriginalFilename())) {
+                log.info("Converting PDF file to internal format");
+                return doclingService.convertPdf(pdfFile);
             } else {
                 throw new IllegalArgumentException(
-                        "doclingFile must be a PDF. Received: " + doclingFile.getOriginalFilename()
+                        "pdfFile must be a PDF. Received: " + pdfFile.getOriginalFilename()
                 );
             }
 
-        } else if (doclingPath != null && !doclingPath.isBlank()) {
+        } else if (pdfPath != null && !pdfPath.isBlank()) {
             // Opción 2: PDF como Path
-            log.debug("Processing PDF from path: {}", doclingPath);
+            log.debug("Processing PDF from path: {}", pdfPath);
 
-            if (isPdf(doclingPath)) {
-                log.info("Converting PDF from path to Docling JSON");
+            if (isPdf(pdfPath)) {
+                log.info("Converting PDF from path to internal format");
 
                 // Leer PDF y crear MultipartFile
-                byte[] pdfBytes = Files.readAllBytes(Paths.get(doclingPath));
-                MultipartFile pdfFile = new ByteArrayMultipartFile(
+                byte[] pdfBytes = Files.readAllBytes(Paths.get(pdfPath));
+                MultipartFile pdfMultipart = new ByteArrayMultipartFile(
                         "file",
-                        new File(doclingPath).getName(),
+                        new File(pdfPath).getName(),
                         "application/pdf",
                         pdfBytes
                 );
 
-                return doclingService.convertPdf(pdfFile);
+                return doclingService.convertPdf(pdfMultipart);
             } else {
                 throw new IllegalArgumentException(
-                        "doclingPath must point to a PDF file. Received: " + doclingPath
+                        "pdfPath must point to a PDF file. Received: " + pdfPath
                 );
             }
 
         } else {
             throw new IllegalArgumentException(
-                    "No PDF input provided. Must provide either doclingFile or doclingPath"
+                    "No PDF input provided. Must provide either pdfFile or pdfPath"
             );
         }
     }
@@ -391,7 +391,7 @@ public class ExtractionController {
      * Guarda inputs temporalmente para async (sin procesar)
      */
     private String saveInputsTemporarily(
-            MultipartFile doclingFile, String doclingPath,
+            MultipartFile pdfFile, String pdfPath,
             String templateJson, MultipartFile templateFile, String templatePath
     ) throws IOException {
 
@@ -400,17 +400,17 @@ public class ExtractionController {
         Files.createDirectories(storagePath);
 
         // Guardar PDF
-        if (doclingFile != null && !doclingFile.isEmpty()) {
+        if (pdfFile != null && !pdfFile.isEmpty()) {
             // PDF como archivo
             Files.copy(
-                    doclingFile.getInputStream(),
-                    storagePath.resolve("docling.pdf")
+                    pdfFile.getInputStream(),
+                    storagePath.resolve("input.pdf")
             );
-        } else if (doclingPath != null && !doclingPath.isBlank()) {
+        } else if (pdfPath != null && !pdfPath.isBlank()) {
             // PDF como path - guardar referencia
             Files.writeString(
-                    storagePath.resolve("docling-path.txt"),
-                    doclingPath
+                    storagePath.resolve("pdf-path.txt"),
+                    pdfPath
             );
         }
 
@@ -448,22 +448,22 @@ public class ExtractionController {
      * Valida que se hayan proporcionado los inputs requeridos
      *
      * Requerimientos:
-     * - Al menos uno: doclingFile o doclingPath (PDF)
+     * - Al menos uno: pdfFile o pdfPath
      * - Al menos uno: template, templateFile o templatePath
      *
      * @throws IllegalArgumentException si falta algún input requerido
      */
     private void validateInputs(
-            MultipartFile doclingFile, String doclingPath,
+            MultipartFile pdfFile, String pdfPath,
             String templateJson, MultipartFile templateFile, String templatePath
     ) {
         // Validar PDF input
-        boolean hasPdfFile = doclingFile != null && !doclingFile.isEmpty();
-        boolean hasPdfPath = doclingPath != null && !doclingPath.isBlank();
+        boolean hasPdfFile = pdfFile != null && !pdfFile.isEmpty();
+        boolean hasPdfPath = pdfPath != null && !pdfPath.isBlank();
 
         if (!hasPdfFile && !hasPdfPath) {
             throw new IllegalArgumentException(
-                    "PDF input is required. Must provide either 'doclingFile' or 'doclingPath'"
+                    "PDF input is required. Must provide either 'pdfFile' or 'pdfPath'"
             );
         }
 
@@ -481,7 +481,7 @@ public class ExtractionController {
         // Validar que no se proporcionen múltiples inputs del mismo tipo
         if (hasPdfFile && hasPdfPath) {
             throw new IllegalArgumentException(
-                    "Cannot provide both 'doclingFile' and 'doclingPath'. Choose one."
+                    "Cannot provide both 'pdfFile' and 'pdfPath'. Choose one."
             );
         }
 
@@ -510,9 +510,9 @@ public class ExtractionController {
     /**
      * Detecta tipo de input
      */
-    private String detectInputType(MultipartFile doclingFile, String doclingPath) {
-        if (doclingFile != null) return "PDF_FILE";
-        if (doclingPath != null) return "PDF_PATH";
+    private String detectInputType(MultipartFile pdfFile, String pdfPath) {
+        if (pdfFile != null) return "PDF_FILE";
+        if (pdfPath != null) return "PDF_PATH";
         return "UNKNOWN";
     }
 

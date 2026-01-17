@@ -12,9 +12,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -27,10 +30,9 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Servicio para gestión de jobs asíncronos
  *
- * Modificado para:
- * - Async REAL (no bloquea endpoint)
- * - Usa pdfStorageId para guardar referencias temporales
- * - Limpieza automática de archivos temporales
+ * Modificado para soportar estructura flexible:
+ * - PDF: File o Path
+ * - Template: JSON, File o Path
  */
 @Slf4j
 @Service
@@ -39,6 +41,7 @@ public class JobService {
 
     private final JobRepository jobRepository;
     private final ExtractionService extractionService;
+    private final DoclingService doclingService;
     private final ObjectMapper objectMapper;
 
     /**
@@ -75,13 +78,7 @@ public class JobService {
     }
 
     /**
-     * Crea job con storage temporal (NUEVO - async real)
-     *
-     * @param storageId ID del storage temporal donde están los inputs
-     * @param inputType Tipo de input (JSON/FILE/PATH)
-     * @param options Opciones de extracción
-     * @param correlationId ID de correlación
-     * @return Job creado
+     * Crea job con storage temporal (NUEVO - async real con estructura flexible)
      */
     @Transactional
     public Job createJobWithStorage(
@@ -91,15 +88,14 @@ public class JobService {
             String correlationId
     ) throws JsonProcessingException {
 
-        // Serializar solo las opciones (no todo el docling/template)
         String optionsJson = options != null ?
                 objectMapper.writeValueAsString(options) : null;
 
         Job job = Job.builder()
                 .status(JobStatus.PENDING)
                 .correlationId(correlationId)
-                .storageId(storageId)  // ✅ Usar campo storage genérico
-                .requestPayload(optionsJson)  // Solo opciones
+                .storageId(storageId)
+                .requestPayload(optionsJson)
                 .progress(0)
                 .build();
 
@@ -114,7 +110,7 @@ public class JobService {
     /**
      * Procesa job de forma síncrona (VIEJO)
      *
-     * @deprecated Se mantiene por compatibilidad, pero se recomienda usar processJobAsync
+     * @deprecated Se mantiene por compatibilidad
      */
     @Deprecated
     @Transactional
@@ -128,13 +124,11 @@ public class JobService {
         }
 
         try {
-            // Update status to PROCESSING
             job.setStatus(JobStatus.PROCESSING);
             job.setStartedAt(Instant.now());
             job.setProgress(10);
             jobRepository.save(job);
 
-            // Parse request payload (método viejo)
             Map<String, Object> payload = objectMapper.readValue(job.getRequestPayload(), Map.class);
             JsonNode docling = objectMapper.valueToTree(payload.get("docling"));
             JsonNode template = objectMapper.valueToTree(payload.get("template"));
@@ -146,14 +140,12 @@ public class JobService {
             job.setProgress(30);
             jobRepository.save(job);
 
-            // Perform extraction
             log.info("Executing extraction for job {}", jobId);
             JsonNode result = extractionService.extract(docling, template, options);
 
             job.setProgress(90);
             jobRepository.save(job);
 
-            // Save result
             String resultJson = objectMapper.writeValueAsString(result);
             job.setResultPayload(resultJson);
             job.setStatus(JobStatus.COMPLETED);
@@ -181,12 +173,11 @@ public class JobService {
     }
 
     /**
-     * Procesa job de forma asíncrona (ASYNC REAL)
+     * Procesa job de forma asíncrona (ASYNC REAL con estructura flexible)
      *
-     * Este método NO bloquea - se ejecuta en thread pool separado.
-     *
-     * @param jobId ID del job a procesar
-     * @return CompletableFuture que se completa cuando termina
+     * Soporta:
+     * - PDF: docling.pdf o docling-path.txt
+     * - Template: template.json o template-path.txt
      */
     @Async("jobExecutor")
     public CompletableFuture<Void> processJobAsync(String jobId) {
@@ -202,52 +193,35 @@ public class JobService {
 
             log.info("Job {}: Started async processing", jobId);
 
-            // 2. Recuperar inputs desde storage temporal
+            // 2. Recuperar storage path
             String storageId = job.getStorageId();
             Path storagePath = Paths.get("/tmp/invoice-extractor", storageId);
 
             log.debug("Job {}: Loading inputs from storage {}", jobId, storageId);
 
-            // Verificar si es PATH reference o archivos directos
-            JsonNode docling;
-            JsonNode template;
+            // 3. Procesar PDF → Docling JSON
+            JsonNode docling = processDoclingFromStorage(storagePath, jobId, job);
 
-            Path pathsFile = storagePath.resolve("paths.txt");
-            if (Files.exists(pathsFile)) {
-                // Modo PATH: leer referencias
-                String content = Files.readString(pathsFile);
-                String[] lines = content.split("\n");
-                String doclingPath = lines[0].substring("docling=".length());
-                String templatePath = lines[1].substring("template=".length());
+            // 4. Procesar Template
+            JsonNode template = processTemplateFromStorage(storagePath, jobId, job);
 
-                docling = objectMapper.readTree(new File(doclingPath));
-                template = objectMapper.readTree(new File(templatePath));
-            } else {
-                // Modo JSON o FILE: leer archivos guardados
-                docling = objectMapper.readTree(storagePath.resolve("docling.json").toFile());
-                template = objectMapper.readTree(storagePath.resolve("template.json").toFile());
-            }
-
-            job.setProgress(30);
-            jobRepository.save(job);
-
-            // 3. Parsear opciones
+            // 5. Parsear opciones
             ExtractionOptions options = null;
             if (job.getRequestPayload() != null && !job.getRequestPayload().isEmpty()) {
                 options = objectMapper.readValue(job.getRequestPayload(), ExtractionOptions.class);
             }
 
-            job.setProgress(40);
+            job.setProgress(50);
             jobRepository.save(job);
 
-            // 4. Ejecutar extracción
+            // 6. Ejecutar extracción
             log.debug("Job {}: Extracting data", jobId);
             JsonNode result = extractionService.extract(docling, template, options);
 
             job.setProgress(90);
             jobRepository.save(job);
 
-            // 5. Guardar resultado
+            // 7. Guardar resultado
             String resultJson = objectMapper.writeValueAsString(result);
             job.setResultPayload(resultJson);
             job.setStatus(JobStatus.COMPLETED);
@@ -257,7 +231,7 @@ public class JobService {
 
             jobRepository.save(job);
 
-            // 6. Limpiar storage temporal
+            // 8. Limpiar storage temporal
             cleanupStorage(storagePath);
 
             log.info("Job {} completed successfully in {}ms", jobId, job.getDurationMs());
@@ -265,7 +239,6 @@ public class JobService {
         } catch (Exception e) {
             log.error("Job {} failed: {}", jobId, e.getMessage(), e);
 
-            // Actualizar job con error
             job.setStatus(JobStatus.FAILED);
             job.setCompletedAt(Instant.now());
             job.setErrorMessage(truncateError(e.getMessage()));
@@ -276,7 +249,7 @@ public class JobService {
 
             jobRepository.save(job);
 
-            // Intentar limpiar storage temporal incluso en error
+            // Intentar limpiar storage temporal
             try {
                 String storageId = job.getStorageId();
                 if (storageId != null) {
@@ -289,6 +262,97 @@ public class JobService {
         }
 
         return CompletableFuture.completedFuture(null);
+    }
+
+    /**
+     * Procesa PDF desde storage y convierte a Docling JSON
+     *
+     * Soporta:
+     * - docling.pdf: PDF guardado directamente
+     * - docling-path.txt: Path al PDF
+     */
+    private JsonNode processDoclingFromStorage(Path storagePath, String jobId, Job job)
+            throws IOException {
+
+        Path pdfFile = storagePath.resolve("docling.pdf");
+        Path pdfPathFile = storagePath.resolve("docling-path.txt");
+
+        if (Files.exists(pdfFile)) {
+            // PDF guardado directamente
+            log.info("Job {}: Converting PDF to Docling JSON", jobId);
+            job.setProgress(20);
+            jobRepository.save(job);
+
+            byte[] pdfBytes = Files.readAllBytes(pdfFile);
+            MultipartFile pdfMultipart = new ByteArrayMultipartFile(
+                    "file",
+                    "docling.pdf",
+                    "application/pdf",
+                    pdfBytes
+            );
+
+            JsonNode docling = doclingService.convertPdf(pdfMultipart);
+
+            job.setProgress(35);
+            jobRepository.save(job);
+
+            return docling;
+
+        } else if (Files.exists(pdfPathFile)) {
+            // Path al PDF
+            String pdfPath = Files.readString(pdfPathFile).trim();
+            log.info("Job {}: Converting PDF from path {} to Docling JSON", jobId, pdfPath);
+
+            job.setProgress(20);
+            jobRepository.save(job);
+
+            byte[] pdfBytes = Files.readAllBytes(Paths.get(pdfPath));
+            MultipartFile pdfMultipart = new ByteArrayMultipartFile(
+                    "file",
+                    new File(pdfPath).getName(),
+                    "application/pdf",
+                    pdfBytes
+            );
+
+            JsonNode docling = doclingService.convertPdf(pdfMultipart);
+
+            job.setProgress(35);
+            jobRepository.save(job);
+
+            return docling;
+
+        } else {
+            throw new IllegalStateException("No PDF input found in storage: " + storagePath);
+        }
+    }
+
+    /**
+     * Procesa Template desde storage
+     *
+     * Soporta:
+     * - template.json: Template guardado directamente
+     * - template-path.txt: Path al template
+     */
+    private JsonNode processTemplateFromStorage(Path storagePath, String jobId, Job job)
+            throws IOException {
+
+        Path templateFile = storagePath.resolve("template.json");
+        Path templatePathFile = storagePath.resolve("template-path.txt");
+
+        if (Files.exists(templateFile)) {
+            // Template guardado directamente
+            log.debug("Job {}: Reading template from storage", jobId);
+            return objectMapper.readTree(templateFile.toFile());
+
+        } else if (Files.exists(templatePathFile)) {
+            // Path al template
+            String templatePath = Files.readString(templatePathFile).trim();
+            log.debug("Job {}: Reading template from path {}", jobId, templatePath);
+            return objectMapper.readTree(new File(templatePath));
+
+        } else {
+            throw new IllegalStateException("No template input found in storage: " + storagePath);
+        }
     }
 
     /**
@@ -325,7 +389,7 @@ public class JobService {
         try {
             if (Files.exists(storagePath)) {
                 Files.walk(storagePath)
-                        .sorted((a, b) -> -a.compareTo(b)) // Orden inverso
+                        .sorted((a, b) -> -a.compareTo(b))
                         .forEach(path -> {
                             try {
                                 Files.delete(path);
@@ -353,5 +417,64 @@ public class JobService {
         return error.length() > maxLength ?
                 error.substring(0, maxLength) + "... (truncated)" :
                 error;
+    }
+
+    /**
+     * Implementación simple de MultipartFile para uso interno
+     */
+    private static class ByteArrayMultipartFile implements MultipartFile {
+
+        private final String name;
+        private final String originalFilename;
+        private final String contentType;
+        private final byte[] content;
+
+        public ByteArrayMultipartFile(String name, String originalFilename,
+                                      String contentType, byte[] content) {
+            this.name = name;
+            this.originalFilename = originalFilename;
+            this.contentType = contentType;
+            this.content = content;
+        }
+
+        @Override
+        public String getName() {
+            return name;
+        }
+
+        @Override
+        public String getOriginalFilename() {
+            return originalFilename;
+        }
+
+        @Override
+        public String getContentType() {
+            return contentType;
+        }
+
+        @Override
+        public boolean isEmpty() {
+            return content == null || content.length == 0;
+        }
+
+        @Override
+        public long getSize() {
+            return content.length;
+        }
+
+        @Override
+        public byte[] getBytes() {
+            return content;
+        }
+
+        @Override
+        public InputStream getInputStream() {
+            return new ByteArrayInputStream(content);
+        }
+
+        @Override
+        public void transferTo(File dest) throws IOException {
+            Files.write(dest.toPath(), content);
+        }
     }
 }

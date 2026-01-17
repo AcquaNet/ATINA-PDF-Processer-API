@@ -5,6 +5,7 @@ import com.atina.invoice.api.dto.response.ApiResponse;
 import com.atina.invoice.api.dto.response.JobResponse;
 import com.atina.invoice.api.model.Job;
 import com.atina.invoice.api.model.JobStatus;
+import com.atina.invoice.api.service.DoclingService;
 import com.atina.invoice.api.service.ExtractionService;
 import com.atina.invoice.api.service.JobService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -16,7 +17,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -27,10 +30,9 @@ import java.util.UUID;
 /**
  * Controller unificado para extracción
  *
- * Refactorizado para:
- * - Un endpoint soporta múltiples formatos (JSON/File/Path)
- * - Async REAL (<100ms response)
- * - Sin duplicación de código
+ * Soporta todas las combinaciones:
+ * - PDF: File o Path
+ * - Template: JSON (texto), File o Path
  *
  * @author Atina Team
  */
@@ -43,19 +45,30 @@ public class ExtractionController {
 
     private final ExtractionService extractionService;
     private final JobService jobService;
+    private final DoclingService doclingService;
     private final ObjectMapper objectMapper;
 
     /**
-     * Extracción síncrona (UNIFICADA)
+     * Extracción síncrona (UNIFICADA - FLEXIBLE)
      *
      * POST /api/v1/extract
      *
-     * Soporta 3 formatos de input:
-     * 1. JSON en body (application/json)
-     * 2. Files (multipart/form-data)
-     * 3. Paths en filesystem (application/json con paths)
+     * PDF (Docling):
+     * - doclingFile: PDF como archivo
+     * - doclingPath: Path al PDF
      *
-     * Retorna el resultado inmediatamente.
+     * Template:
+     * - template: JSON directo (texto)
+     * - templateFile: Archivo JSON
+     * - templatePath: Path al archivo
+     *
+     * Todas las combinaciones son válidas:
+     * - PDF File + Template JSON
+     * - PDF File + Template File
+     * - PDF File + Template Path
+     * - PDF Path + Template JSON
+     * - PDF Path + Template File
+     * - PDF Path + Template Path
      */
     @PostMapping(consumes = {
             MediaType.APPLICATION_JSON_VALUE,
@@ -64,37 +77,54 @@ public class ExtractionController {
     @Operation(
             summary = "Extract data (synchronous)",
             description = """
-                    Extract invoice data using docling and template.
+                    Extract invoice data from PDF and template.
                     
-                    Supports 3 input formats:
-                    1. JSON: Send docling and template as JSON objects
-                    2. Files: Send docling and template as files
-                    3. Paths: Send paths to files in shared filesystem
+                    PDF Input (choose one):
+                    - doclingFile: Upload PDF file
+                    - doclingPath: Path to PDF in filesystem
                     
-                    Returns result immediately (1-5 seconds).
+                    Template Input (choose one):
+                    - template: JSON object directly
+                    - templateFile: Upload template file
+                    - templatePath: Path to template in filesystem
+                    
+                    All combinations are supported.
+                    Returns result immediately (5-15 seconds for PDF conversion).
                     """
     )
-    public ApiResponse<JsonNode> extract(@ModelAttribute ExtractionRequest request) {
-        log.info("Sync extraction requested: type={}", request.getInputType());
+    public ApiResponse<JsonNode> extract(
+            // PDF inputs
+            @RequestPart(value = "doclingFile", required = false) MultipartFile doclingFile,
+            @RequestPart(value = "doclingPath", required = false) String doclingPath,
+
+            // Template inputs
+            @RequestPart(value = "template", required = false) String templateJson,
+            @RequestPart(value = "templateFile", required = false) MultipartFile templateFile,
+            @RequestPart(value = "templatePath", required = false) String templatePath,
+
+            // Options
+            @RequestPart(value = "options", required = false) String optionsJson
+    ) {
+        log.info("Sync extraction requested");
 
         long start = System.currentTimeMillis();
 
         try {
-            // 1. Convertir a formato estándar según tipo
-            JsonNode docling = getDocling(request);
-            JsonNode template = getTemplate(request);
+            // 1. Parsear options
+            ExtractionOptions options = parseOptions(optionsJson);
 
-            // 2. Extraer datos (lógica única)
-            JsonNode result = extractionService.extract(
-                    docling,
-                    template,
-                    request.getOptions()
-            );
+            // 2. Procesar PDF → Docling JSON
+            JsonNode docling = processDocling(doclingFile, doclingPath);
+
+            // 3. Procesar Template
+            JsonNode template = processTemplate(templateJson, templateFile, templatePath);
+
+            // 4. Extraer datos
+            JsonNode result = extractionService.extract(docling, template, options);
 
             long duration = System.currentTimeMillis() - start;
 
-            log.info("Sync extraction completed in {}ms (type: {})",
-                    duration, request.getInputType());
+            log.info("Sync extraction completed in {}ms", duration);
 
             return ApiResponse.success(result, MDC.get("correlationId"), duration);
 
@@ -110,14 +140,12 @@ public class ExtractionController {
     }
 
     /**
-     * Extracción asíncrona (ASYNC REAL)
+     * Extracción asíncrona (ASYNC REAL - FLEXIBLE)
      *
      * POST /api/v1/extract/async
      *
-     * Soporta los mismos 3 formatos que sync.
-     *
-     * Retorna inmediatamente (~50-100ms) con jobId.
-     * El procesamiento ocurre en background.
+     * Soporta las mismas combinaciones que sync.
+     * Retorna inmediatamente con jobId.
      */
     @PostMapping(
             value = "/async",
@@ -131,40 +159,58 @@ public class ExtractionController {
             description = """
                     Extract invoice data asynchronously.
                     
-                    Supports same 3 input formats as sync endpoint.
-                    Returns immediately (~50-100ms) with job ID.
+                    Supports same input combinations as sync endpoint.
+                    Returns immediately (~50-200ms) with job ID.
                     Processing happens in background.
                     
                     Use GET /extract/async/{jobId} to check status and get result.
                     """
     )
-    public ApiResponse<JobResponse> extractAsync(@ModelAttribute ExtractionRequest request) {
-        log.info("Async extraction requested: type={}", request.getInputType());
+    public ApiResponse<JobResponse> extractAsync(
+            // PDF inputs
+            @RequestPart(value = "doclingFile", required = false) MultipartFile doclingFile,
+            @RequestPart(value = "doclingPath", required = false) String doclingPath,
+
+            // Template inputs
+            @RequestPart(value = "template", required = false) String templateJson,
+            @RequestPart(value = "templateFile", required = false) MultipartFile templateFile,
+            @RequestPart(value = "templatePath", required = false) String templatePath,
+
+            // Options
+            @RequestPart(value = "options", required = false) String optionsJson
+    ) {
+        log.info("Async extraction requested");
 
         long start = System.currentTimeMillis();
 
         try {
-            // 1. Guardar input temporalmente SIN procesarlo (rápido: ~20-50ms)
-            String storageId = saveInputTemporarily(request);
+            // 1. Parsear options
+            ExtractionOptions options = parseOptions(optionsJson);
 
-            // 2. Crear job (rápido: ~10ms)
+            // 2. Guardar inputs temporalmente SIN procesarlos
+            String storageId = saveInputsTemporarily(
+                    doclingFile, doclingPath,
+                    templateJson, templateFile, templatePath
+            );
+
+            // 3. Crear job
+            String inputType = detectInputType(doclingFile, doclingPath);
             Job job = jobService.createJobWithStorage(
                     storageId,
-                    request.getInputType().name(),
-                    request.getOptions(),
+                    inputType,
+                    options,
                     MDC.get("correlationId")
             );
 
-            // 3. Procesar async - NO ESPERA (rápido: ~5ms para lanzar)
+            // 4. Procesar async - NO ESPERA
             jobService.processJobAsync(job.getId());
 
-            // 4. Retornar inmediatamente
+            // 5. Retornar inmediatamente
             JobResponse response = buildJobResponse(job);
 
             long duration = System.currentTimeMillis() - start;
 
-            log.info("Async job created: {} ({}ms, type: {})",
-                    job.getId(), duration, request.getInputType());
+            log.info("Async job created: {} ({}ms)", job.getId(), duration);
 
             return ApiResponse.success(response, MDC.get("correlationId"), duration);
 
@@ -181,8 +227,6 @@ public class ExtractionController {
 
     /**
      * Obtener estado y resultado del job
-     *
-     * GET /api/v1/extract/async/{jobId}
      */
     @GetMapping("/async/{jobId}")
     @Operation(
@@ -190,7 +234,7 @@ public class ExtractionController {
             description = "Get current status of async extraction job. Includes result when completed."
     )
     public ApiResponse<JobResponse> getJob(@PathVariable String jobId) {
-        log.debug("Job status requested: {}", jobId);
+        log.info("Job status requested: {}", jobId);
 
         long start = System.currentTimeMillis();
 
@@ -212,79 +256,218 @@ public class ExtractionController {
             );
         }
     }
-  
+
+    /**
+     * Obtener solo resultado del job (DEPRECATED)
+     */
+    @GetMapping("/async/{jobId}/result")
+    @Deprecated
+    @Operation(
+            summary = "Get job result (deprecated)",
+            description = "Deprecated: Use GET /async/{jobId} instead."
+    )
+    public ApiResponse<JsonNode> getJobResult(@PathVariable String jobId) {
+        log.info("Job result requested: {}", jobId);
+
+        long start = System.currentTimeMillis();
+
+        try {
+            JsonNode result = jobService.getJobResult(jobId);
+
+            long duration = System.currentTimeMillis() - start;
+
+            return ApiResponse.success(result, MDC.get("correlationId"), duration);
+
+        } catch (Exception e) {
+            log.error("Failed to get job result: {}", jobId, e);
+            long duration = System.currentTimeMillis() - start;
+            return ApiResponse.error(
+                    "Failed to get job result: " + e.getMessage(),
+                    MDC.get("correlationId"),
+                    duration
+            );
+        }
+    }
+
+    // ============================================================
+    // PROCESSING METHODS - FLEXIBLE
+    // ============================================================
+
+    /**
+     * Procesa PDF (de File o Path) y convierte a Docling JSON
+     *
+     * @param doclingFile PDF como archivo (opcional)
+     * @param doclingPath Path al PDF (opcional)
+     * @return Docling JSON
+     * @throws IOException si hay error de lectura/conversión
+     */
+    private JsonNode processDocling(MultipartFile doclingFile, String doclingPath)
+            throws IOException {
+
+        if (doclingFile != null && !doclingFile.isEmpty()) {
+            // Opción 1: PDF como File
+            log.info("Processing PDF from file: {}", doclingFile.getOriginalFilename());
+
+            if (isPdf(doclingFile.getOriginalFilename())) {
+                log.info("Converting PDF file to Docling JSON");
+                return doclingService.convertPdf(doclingFile);
+            } else {
+                throw new IllegalArgumentException(
+                        "doclingFile must be a PDF. Received: " + doclingFile.getOriginalFilename()
+                );
+            }
+
+        } else if (doclingPath != null && !doclingPath.isBlank()) {
+            // Opción 2: PDF como Path
+            doclingPath = doclingPath.trim();
+            log.info("Processing PDF from path: {}", doclingPath);
+
+            boolean isPdf = isPdf(doclingPath);
+
+            log.info("Processing PDF. is PDF? : {}", isPdf);
+
+            if (isPdf) {
+                log.info("Converting PDF from path to Docling JSON");
+
+                // Leer PDF y crear MultipartFile
+                byte[] pdfBytes = Files.readAllBytes(Paths.get(doclingPath));
+                MultipartFile pdfFile = new ByteArrayMultipartFile(
+                        "file",
+                        new File(doclingPath).getName(),
+                        "application/pdf",
+                        pdfBytes
+                );
+
+                return doclingService.convertPdf(pdfFile);
+            } else {
+                throw new IllegalArgumentException(
+                        "doclingPath must point to a PDF file. Received: " + doclingPath
+                );
+            }
+
+        } else {
+            throw new IllegalArgumentException(
+                    "No PDF input provided. Must provide either doclingFile or doclingPath"
+            );
+        }
+    }
+
+    /**
+     * Procesa Template (de JSON, File o Path)
+     *
+     * @param templateJson Template como JSON texto (opcional)
+     * @param templateFile Template como archivo (opcional)
+     * @param templatePath Path al template (opcional)
+     * @return Template JSON
+     * @throws IOException si hay error de lectura
+     */
+    private JsonNode processTemplate(String templateJson, MultipartFile templateFile,
+                                     String templatePath) throws IOException {
+
+        if (templateJson != null && !templateJson.isBlank()) {
+            // Opción 1: Template como JSON texto
+            log.info("Processing template from JSON text");
+            return objectMapper.readTree(templateJson);
+
+        } else if (templateFile != null && !templateFile.isEmpty()) {
+            // Opción 2: Template como File
+            log.info("Processing template from file: {}", templateFile.getOriginalFilename());
+            return objectMapper.readTree(templateFile.getInputStream());
+
+        } else if (templatePath != null && !templatePath.isBlank()) {
+            // Opción 3: Template como Path
+            log.info("Processing template from path: {}", templatePath);
+            return objectMapper.readTree(new File(templatePath));
+
+        } else {
+            throw new IllegalArgumentException(
+                    "No template input provided. Must provide one of: template, templateFile, or templatePath"
+            );
+        }
+    }
+
+    /**
+     * Guarda inputs temporalmente para async (sin procesar)
+     */
+    private String saveInputsTemporarily(
+            MultipartFile doclingFile, String doclingPath,
+            String templateJson, MultipartFile templateFile, String templatePath
+    ) throws IOException {
+
+        String storageId = UUID.randomUUID().toString();
+        Path storagePath = Paths.get("/tmp/invoice-extractor", storageId);
+        Files.createDirectories(storagePath);
+
+        // Guardar PDF
+        if (doclingFile != null && !doclingFile.isEmpty()) {
+            // PDF como archivo
+            Files.copy(
+                    doclingFile.getInputStream(),
+                    storagePath.resolve("docling.pdf")
+            );
+        } else if (doclingPath != null && !doclingPath.isBlank()) {
+            // PDF como path - guardar referencia
+            Files.writeString(
+                    storagePath.resolve("docling-path.txt"),
+                    doclingPath
+            );
+        }
+
+        // Guardar Template
+        if (templateJson != null && !templateJson.isBlank()) {
+            // Template como JSON texto
+            Files.writeString(
+                    storagePath.resolve("template.json"),
+                    templateJson
+            );
+        } else if (templateFile != null && !templateFile.isEmpty()) {
+            // Template como archivo
+            Files.copy(
+                    templateFile.getInputStream(),
+                    storagePath.resolve("template.json")
+            );
+        } else if (templatePath != null && !templatePath.isBlank()) {
+            // Template como path - guardar referencia
+            Files.writeString(
+                    storagePath.resolve("template-path.txt"),
+                    templatePath
+            );
+        }
+
+        log.info("Saved inputs temporarily: {}", storageId);
+
+        return storageId;
+    }
+
     // ============================================================
     // HELPER METHODS
     // ============================================================
 
     /**
-     * Obtiene docling según tipo de input
+     * Parsea options desde JSON string
      */
-    private JsonNode getDocling(ExtractionRequest request) throws IOException {
-        return switch (request.getInputType()) {
-            case JSON -> request.getDocling();
-            case FILE -> objectMapper.readTree(request.getDoclingFile().getInputStream());
-            case PATH -> objectMapper.readTree(new File(request.getDoclingPath()));
-        };
-    }
-
-    /**
-     * Obtiene template según tipo de input
-     */
-    private JsonNode getTemplate(ExtractionRequest request) throws IOException {
-        return switch (request.getInputType()) {
-            case JSON -> request.getTemplate();
-            case FILE -> objectMapper.readTree(request.getTemplateFile().getInputStream());
-            case PATH -> objectMapper.readTree(new File(request.getTemplatePath()));
-        };
-    }
-
-    /**
-     * Guarda input temporalmente para procesamiento async
-     *
-     * @return storageId
-     */
-    private String saveInputTemporarily(ExtractionRequest request) throws IOException {
-        String storageId = UUID.randomUUID().toString();
-        Path storagePath = Paths.get("/tmp/invoice-extractor", storageId);
-        Files.createDirectories(storagePath);
-
-        switch (request.getInputType()) {
-            case JSON -> {
-                // Guardar JSON como archivos
-                objectMapper.writeValue(
-                        storagePath.resolve("docling.json").toFile(),
-                        request.getDocling()
-                );
-                objectMapper.writeValue(
-                        storagePath.resolve("template.json").toFile(),
-                        request.getTemplate()
-                );
-            }
-            case FILE -> {
-                // Copiar archivos
-                Files.copy(
-                        request.getDoclingFile().getInputStream(),
-                        storagePath.resolve("docling.json")
-                );
-                Files.copy(
-                        request.getTemplateFile().getInputStream(),
-                        storagePath.resolve("template.json")
-                );
-            }
-            case PATH -> {
-                // Guardar referencias
-                Files.writeString(
-                        storagePath.resolve("paths.txt"),
-                        "docling=" + request.getDoclingPath() + "\n" +
-                                "template=" + request.getTemplatePath()
-                );
-            }
+    private ExtractionOptions parseOptions(String optionsJson) throws IOException {
+        if (optionsJson == null || optionsJson.isEmpty() || optionsJson.equals("{}")) {
+            return new ExtractionOptions();
         }
 
-        log.debug("Saved input temporarily: {} (type: {})", storageId, request.getInputType());
+        return objectMapper.readValue(optionsJson, ExtractionOptions.class);
+    }
 
-        return storageId;
+    /**
+     * Detecta tipo de input
+     */
+    private String detectInputType(MultipartFile doclingFile, String doclingPath) {
+        if (doclingFile != null) return "PDF_FILE";
+        if (doclingPath != null) return "PDF_PATH";
+        return "UNKNOWN";
+    }
+
+    /**
+     * Verifica si el nombre/path es PDF
+     */
+    private boolean isPdf(String filename) {
+        return filename != null && filename.toLowerCase().endsWith(".pdf");
     }
 
     /**
@@ -317,5 +500,63 @@ public class ExtractionController {
 
         return builder.build();
     }
-}
 
+    /**
+     * Implementación simple de MultipartFile para uso interno
+     */
+    private static class ByteArrayMultipartFile implements MultipartFile {
+
+        private final String name;
+        private final String originalFilename;
+        private final String contentType;
+        private final byte[] content;
+
+        public ByteArrayMultipartFile(String name, String originalFilename,
+                                      String contentType, byte[] content) {
+            this.name = name;
+            this.originalFilename = originalFilename;
+            this.contentType = contentType;
+            this.content = content;
+        }
+
+        @Override
+        public String getName() {
+            return name;
+        }
+
+        @Override
+        public String getOriginalFilename() {
+            return originalFilename;
+        }
+
+        @Override
+        public String getContentType() {
+            return contentType;
+        }
+
+        @Override
+        public boolean isEmpty() {
+            return content == null || content.length == 0;
+        }
+
+        @Override
+        public long getSize() {
+            return content.length;
+        }
+
+        @Override
+        public byte[] getBytes() {
+            return content;
+        }
+
+        @Override
+        public java.io.InputStream getInputStream() {
+            return new java.io.ByteArrayInputStream(content);
+        }
+
+        @Override
+        public void transferTo(java.io.File dest) throws IOException {
+            Files.write(dest.toPath(), content);
+        }
+    }
+}

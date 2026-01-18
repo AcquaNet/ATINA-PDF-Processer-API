@@ -1,5 +1,6 @@
 package com.atina.invoice.api.security;
 
+import com.atina.invoice.api.dto.response.LoginResponse;
 import com.atina.invoice.api.model.User;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
@@ -42,10 +43,10 @@ public class JwtTokenProvider {
     /**
      * Generate token from Authentication
      */
-    public String generateToken(Authentication authentication) {
+    public String generateToken(Authentication authentication, LoginResponse.TenantInfo tenantInfo) {
         org.springframework.security.core.userdetails.User userDetails =
                 (org.springframework.security.core.userdetails.User) authentication.getPrincipal();
-        return generateToken(userDetails.getUsername(), null, null);
+        return generateToken(userDetails.getUsername(), tenantInfo.getId(), tenantInfo.getCode());
     }
 
     /**

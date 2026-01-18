@@ -68,11 +68,9 @@ public class AuthController {
                     )
             );
 
-            // Generate JWT token
-            String token = jwtTokenProvider.generateToken(authentication);
-
-            // Get token expiration
-            Instant expiresAt = jwtTokenProvider.getExpirationFromToken(token);
+            // --------------------------------------------
+            // Fetch full user details with tenant
+            // --------------------------------------------
 
             // Get full user details with tenant
             User user = userService.findByUsername(request.getUsername())
@@ -91,6 +89,15 @@ public class AuthController {
                     .maxApiCallsPerMonth(tenant.getMaxApiCallsPerMonth())
                     .enabled(tenant.isEnabled())
                     .build();
+
+            // --------------------------------------------
+            // Generate JWT token
+            // --------------------------------------------
+
+            String token = jwtTokenProvider.generateToken(authentication,tenantInfo);
+
+            // Get token expiration
+            Instant expiresAt = jwtTokenProvider.getExpirationFromToken(token);
 
             // Build response with full user and tenant info
             LoginResponse response = LoginResponse.builder()
@@ -138,10 +145,7 @@ public class AuthController {
         long start = System.currentTimeMillis();
 
         try {
-            // Generate new token
-            String newToken = jwtTokenProvider.generateToken(authentication);
-            Instant newExpiresAt = jwtTokenProvider.getExpirationFromToken(newToken);
-
+             
             // Get full user details with tenant
             User user = userService.findByUsername(authentication.getName())
                     .orElseThrow(() -> new BadCredentialsException("User not found"));
@@ -156,6 +160,10 @@ public class AuthController {
                     .maxApiCallsPerMonth(tenant.getMaxApiCallsPerMonth())
                     .enabled(tenant.isEnabled())
                     .build();
+
+            // Generate new token
+            String newToken = jwtTokenProvider.generateToken(authentication, tenantInfo);
+            Instant newExpiresAt = jwtTokenProvider.getExpirationFromToken(newToken);
 
             // Build response
             LoginResponse response = LoginResponse.builder()

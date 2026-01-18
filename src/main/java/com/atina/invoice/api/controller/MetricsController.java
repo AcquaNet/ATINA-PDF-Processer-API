@@ -57,11 +57,11 @@ public class MetricsController {
     }
 
     /**
-     * Reset metrics (optional - for testing)
+     * Reset metrics
      * 
      * POST /api/v1/metrics/reset
      * 
-     * Resets all metrics counters (useful for testing)
+     * Resets all metrics counters
      */
     @PostMapping("/metrics/reset")
     @Operation(
@@ -70,9 +70,13 @@ public class MetricsController {
     )
     public ApiResponse<Void> resetMetrics() {
         log.info("Metrics reset requested");
+
+        long start = System.currentTimeMillis();
         
         metricsService.resetMetrics();
+
+        long duration = System.currentTimeMillis() - start;
         
-        return ApiResponse.success(null, MDC.get("correlationId"), 0L);
+        return ApiResponse.success(null, MDC.get("correlationId"), duration);
     }
 }

@@ -1,5 +1,6 @@
 package com.atina.invoice.api.repository;
 
+import com.atina.invoice.api.model.Tenant;
 import com.atina.invoice.api.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -144,4 +145,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findUsersCreatedSince(
             @Param("tenantId") Long tenantId,
             @Param("since") Instant since);
+
+    // Método para buscar usuarios por tenant
+    List<User> findByTenant(Tenant tenant);
+
+    // Método para buscar usuarios habilitados
+    List<User> findByEnabled(boolean enabled);
+
+    // Método para buscar por tenant y habilitados
+    List<User> findByTenantAndEnabled(Tenant tenant, boolean enabled);
+
 }

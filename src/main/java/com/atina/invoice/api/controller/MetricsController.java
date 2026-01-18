@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -64,6 +65,7 @@ public class MetricsController {
      * Resets all metrics counters
      */
     @PostMapping("/metrics/reset")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(
         summary = "Reset metrics",
         description = "Reset all metrics counters (for testing purposes)"

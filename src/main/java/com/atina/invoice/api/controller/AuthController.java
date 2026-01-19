@@ -22,6 +22,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -60,13 +61,18 @@ public class AuthController {
         long start = System.currentTimeMillis();
 
         try {
+
+            // --------------------------------------------
             // Authenticate user
+            // --------------------------------------------
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
                             request.getUsername(),
                             request.getPassword()
                     )
             );
+
+            SecurityContextHolder.getContext().setAuthentication(authentication);
 
             // --------------------------------------------
             // Fetch full user details with tenant
@@ -76,11 +82,17 @@ public class AuthController {
             User user = userService.findByUsername(request.getUsername())
                     .orElseThrow(() -> new BadCredentialsException("User not found"));
 
+            // --------------------------------------------
             // Update last login
+            // --------------------------------------------
             userService.updateLastLogin(request.getUsername());
 
+            // --------------------------------------------
             // Build tenant info
+            // --------------------------------------------
+
             Tenant tenant = user.getTenant();
+
             LoginResponse.TenantInfo tenantInfo = LoginResponse.TenantInfo.builder()
                     .id(tenant.getId())
                     .code(tenant.getTenantCode())
@@ -94,7 +106,10 @@ public class AuthController {
             // Generate JWT token
             // --------------------------------------------
 
-            String token = jwtTokenProvider.generateToken(authentication,tenantInfo);
+            String token = jwtTokenProvider.generateToken(authentication,tenantInfo,user.getRole());
+
+            log.info("User logged in successfully: {} with role: {}",
+                    user.getUsername(), user.getRole());
 
             // Get token expiration
             Instant expiresAt = jwtTokenProvider.getExpirationFromToken(token);
@@ -162,7 +177,7 @@ public class AuthController {
                     .build();
 
             // Generate new token
-            String newToken = jwtTokenProvider.generateToken(authentication, tenantInfo);
+            String newToken = jwtTokenProvider.generateToken(authentication, tenantInfo, user.getRole());
             Instant newExpiresAt = jwtTokenProvider.getExpirationFromToken(newToken);
 
             // Build response

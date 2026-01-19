@@ -6,9 +6,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Global exception handler
@@ -62,6 +68,62 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(response);
+    }
+
+    /**
+     * Maneja AccessDeniedException (403 Forbidden)
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<ErrorResponse>> handleAccessDeniedException(
+            AccessDeniedException ex,
+            WebRequest request) {
+
+        log.warn("Access denied: {}", ex.getMessage());
+
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .code("FORBIDDEN")
+                .message("You do not have permission to access this resource")
+                .path(request.getDescription(false).replace("uri=", ""))
+                .build();
+
+        ApiResponse<ErrorResponse> response = ApiResponse.<ErrorResponse>builder()
+                .success(false)
+                .data(errorResponse)
+                .error("Access denied: " + ex.getMessage())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .body(response);
+    }
+
+    /**
+     * Maneja errores de validación (400 Bad Request)
+     * Se lanza cuando la validación de @Valid falla
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiResponse<Map<String, String>>> handleValidationExceptions(
+            MethodArgumentNotValidException ex,
+            WebRequest request) {
+
+        Map<String, String> errors = new HashMap<>();
+        ex.getBindingResult().getAllErrors().forEach((error) -> {
+            String fieldName = ((FieldError) error).getField();
+            String errorMessage = error.getDefaultMessage();
+            errors.put(fieldName, errorMessage);
+        });
+
+        log.warn("Validation failed: {}", errors);
+
+        ApiResponse<Map<String, String>> response = ApiResponse.<Map<String, String>>builder()
+                .success(false)
+                .data(errors)
+                .error("Validation failed")
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)  // ⭐ 400
                 .body(response);
     }
 

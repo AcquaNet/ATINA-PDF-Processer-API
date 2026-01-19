@@ -43,10 +43,10 @@ public class JwtTokenProvider {
     /**
      * Generate token from Authentication
      */
-    public String generateToken(Authentication authentication, LoginResponse.TenantInfo tenantInfo) {
+    public String generateToken(Authentication authentication, LoginResponse.TenantInfo tenantInfo, String role) {
         org.springframework.security.core.userdetails.User userDetails =
                 (org.springframework.security.core.userdetails.User) authentication.getPrincipal();
-        return generateToken(userDetails.getUsername(), tenantInfo.getId(), tenantInfo.getCode());
+        return generateToken(userDetails.getUsername(), tenantInfo.getId(), tenantInfo.getCode(), role);
     }
 
     /**
@@ -56,14 +56,18 @@ public class JwtTokenProvider {
         return generateToken(
                 user.getUsername(),
                 user.getTenant().getId(),
-                user.getTenant().getTenantCode()
+                user.getTenant().getTenantCode(),
+                user.getRole()
         );
     }
 
     /**
      * Generate token with username, tenantId, and tenantCode
      */
-    public String generateToken(String username, Long tenantId, String tenantCode) {
+    public String generateToken(String username,
+                                Long tenantId,
+                                String tenantCode,
+                                String role) {
         Instant now = Instant.now();
         Instant expiryDate = now.plusMillis(jwtExpiration);
 
@@ -74,13 +78,22 @@ public class JwtTokenProvider {
                 .expiration(Date.from(expiryDate))
                 .signWith(key);
 
+        // ----------------------------------------
         // Add tenant claims if provided
+        // ----------------------------------------
+
         if (tenantId != null) {
             builder.claim("tenantId", tenantId);
         }
         if (tenantCode != null) {
             builder.claim("tenantCode", tenantCode);
         }
+
+        // ----------------------------------------
+        // Add Role
+        // ----------------------------------------
+
+        builder.claim("role", role);
 
         return builder.compact();
     }
@@ -115,6 +128,20 @@ public class JwtTokenProvider {
     public String getTenantCodeFromToken(String token) {
         Claims claims = getClaims(token);
         return (String) claims.get("tenantCode");
+    }
+
+    /**
+     * Obtiene el rol del token
+     */
+    public String getRoleFromToken(String token) {
+        Claims claims = getClaims(token);
+
+        Object role = claims.get("role");
+        if (role == null) {
+            return null;
+        }
+
+        return role.toString();
     }
 
     /**

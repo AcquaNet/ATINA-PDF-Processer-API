@@ -7,6 +7,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -16,6 +18,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
 
 @Slf4j
 @Component
@@ -33,18 +37,46 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String jwt = getJwtFromRequest(request);
 
             if (StringUtils.hasText(jwt) && tokenProvider.validateToken(jwt)) {
+
+                // ------------------------------------
+                // Extraer información del token
+                // ------------------------------------
+
                 String username = tokenProvider.getUsernameFromToken(jwt);
+                String tenantCode = tokenProvider.getRoleFromToken(jwt);
+                String role = tokenProvider.getRoleFromToken(jwt);
+
+                log.info("Authenticating user: {} with role: {} from tenant: {}",
+                        username, role, tenantCode);
+
+                // ------------------------------------
+                // Cargar detalles del usuario
+                // ------------------------------------
 
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+
+                // ------------------------------------
+                // Crear authorities con prefijo "ROLE_"
+                // Spring Security requiere el prefijo "ROLE_"
+                // para hasRole() y hasAnyRole()
+                // ------------------------------------
+
+                List<GrantedAuthority> authorities = Arrays.asList(
+                        new SimpleGrantedAuthority("ROLE_" + role)
+                );
+
+                // --------------------------------------------------
+                // Crear token de autenticación con las authorities
+                // --------------------------------------------------
                 
                 UsernamePasswordAuthenticationToken authentication = 
-                        new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+                        new UsernamePasswordAuthenticationToken(userDetails, null, authorities);
                 
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
                 SecurityContextHolder.getContext().setAuthentication(authentication);
                 
-                log.debug("Set authentication for user: {}", username);
+                log.info("Set authentication for user: {}", username);
             }
         } catch (Exception ex) {
             log.error("Could not set user authentication in security context", ex);

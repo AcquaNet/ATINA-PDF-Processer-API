@@ -43,19 +43,24 @@ public class EmailPollingScheduler {
      */
     @Scheduled(fixedRate = 60000) // 60 segundos = 1 minuto
     public void pollEmails() {
-        log.debug("🔄 Running email polling scheduler...");
+
+        log.info("BEGIN START POLL EMAILS: Running email polling scheduler...");
 
         try {
+
+            // --------------------------------------------------------
             // 1. Obtener todas las cuentas habilitadas para polling
+            // --------------------------------------------------------
+
             List<EmailAccount> activeAccounts = emailAccountRepository
                     .findAllWithPollingEnabled();
 
             if (activeAccounts.isEmpty()) {
-                log.debug("⏭️ No email accounts enabled for polling");
+                log.info("START POLL EMAILS: No email accounts enabled for polling");
                 return;
             }
 
-            log.debug("📋 Found {} email accounts enabled for polling", activeAccounts.size());
+            log.info("START POLL EMAILS:Found {} email accounts enabled for polling", activeAccounts.size());
 
             // 2. Procesar cada cuenta que necesite polling
             int accountsProcessed = 0;
@@ -65,7 +70,7 @@ public class EmailPollingScheduler {
                 try {
                     // Verificar si ya es hora de hacer polling
                     if (shouldPoll(account)) {
-                        log.info("🔍 Polling emails from: {}", account.getEmailAddress());
+                        log.info("START POLL EMAILS: Polling emails from: {}", account.getEmailAddress());
 
                         // Procesar emails de esta cuenta
                         int emailsProcessed = emailProcessingService
@@ -75,28 +80,28 @@ public class EmailPollingScheduler {
                         totalEmailsProcessed += emailsProcessed;
 
                         if (emailsProcessed > 0) {
-                            log.info("✅ Processed {} emails from {}",
+                            log.info("START POLL EMAILS: Processed {} emails from {}",
                                     emailsProcessed, account.getEmailAddress());
                         }
                     } else {
-                        log.debug("⏭️ Skipping {} - next poll in {} minutes",
+                        log.info("START POLL EMAILS: Skipping {} - next poll in {} minutes",
                                 account.getEmailAddress(),
                                 getMinutesUntilNextPoll(account));
                     }
 
                 } catch (Exception e) {
-                    log.error("❌ Error polling account {}: {}",
+                    log.info("START POLL EMAILS: Error polling account {}: {}",
                             account.getEmailAddress(), e.getMessage(), e);
                 }
             }
 
             if (accountsProcessed > 0) {
-                log.info("🎉 Polling completed: {} accounts processed, {} emails total",
+                log.info("START POLL EMAILS: Polling completed: {} accounts processed, {} emails total",
                         accountsProcessed, totalEmailsProcessed);
             }
 
         } catch (Exception e) {
-            log.error("❌ Error in email polling scheduler: {}", e.getMessage(), e);
+            log.error("START POLL EMAILS: Error in email polling scheduler: {}", e.getMessage(), e);
         }
     }
 

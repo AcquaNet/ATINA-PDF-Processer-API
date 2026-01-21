@@ -2,6 +2,7 @@ package com.atina.invoice.api.service;
 
 import com.atina.invoice.api.model.EmailAccount;
 import com.atina.invoice.api.model.enums.EmailType;
+import com.atina.invoice.api.security.AesGcmCrypto;
 import jakarta.mail.*;
 import jakarta.mail.internet.InternetAddress;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,8 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 public class EmailReaderService {
+
+    private final AesGcmCrypto aesGcmCrypto;
 
     /**
      * DTO para representar un email leído
@@ -68,24 +71,67 @@ public class EmailReaderService {
         List<EmailMessage> emails = new ArrayList<>();
 
         try {
+
+            // ------------------------------------------
             // Configurar propiedades según el tipo
+            // ------------------------------------------
+
             Properties props = new Properties();
             Session session;
             Store store;
+            String rawPassword = "";
+
+            // ------------------------------------------
+            // Segun el tipo de cuenta
+            // ------------------------------------------
 
             if (emailAccount.getEmailType() == EmailType.IMAP) {
+
+                // ------------------------------------------
+                // IMAP
+                // ------------------------------------------
+
+                rawPassword = aesGcmCrypto.decryptFromBase64(emailAccount.getPassword());
+
+                // Protocol & Host
                 props.put("mail.store.protocol", "imap");
                 props.put("mail.imap.host", emailAccount.getHost());
-                props.put("mail.imap.port", emailAccount.getPort());
-                if (emailAccount.getUseSsl()) {
-                    props.put("mail.imap.ssl.enable", "true");
-                }
-                props.put("mail.imap.connectiontimeout", "30000");
-                props.put("mail.imap.timeout", "30000");
+                props.put("mail.imap.port", String.valueOf(emailAccount.getPort()));
+
+                // SSL/TLS (TLSv1.2 como en Mulesoft)
+                props.put("mail.imap.ssl.enable", "true");
+                props.put("mail.imap.ssl.protocols", "TLSv1.2");
+                props.put("mail.imap.ssl.trust", emailAccount.getHost());
+                props.put("mail.imap.ssl.checkserveridentity", "true");
+
+                // Authentication
+                props.put("mail.imap.auth", "true");
+                props.put("mail.imap.auth.mechanisms", "LOGIN PLAIN");
+
+                // Timeouts (10 segundos como en Mulesoft)
+                props.put("mail.imap.connectiontimeout", "10000");
+                props.put("mail.imap.timeout", "10000");
+                props.put("mail.imap.writetimeout", "10000");
+
+                // SSL Socket Factory
+                props.put("mail.imap.socketFactory.class", "javax.net.ssl.SSLSocketFactory");
+                props.put("mail.imap.socketFactory.fallback", "false");
+                props.put("mail.imap.socketFactory.port", String.valueOf(emailAccount.getPort()));
+
+                // Debug (opcional)
+                props.put("mail.debug", "false");
 
                 session = Session.getInstance(props);
+
                 store = session.getStore("imap");
+
+
             } else {
+
+                // ------------------------------------------
+                // POP3
+                // ------------------------------------------
+
                 props.put("mail.store.protocol", "pop3");
                 props.put("mail.pop3.host", emailAccount.getHost());
                 props.put("mail.pop3.port", emailAccount.getPort());
@@ -96,24 +142,38 @@ public class EmailReaderService {
                 props.put("mail.pop3.timeout", "30000");
 
                 session = Session.getInstance(props);
+
                 store = session.getStore("pop3");
+
             }
 
+            // ------------------------------------------
             // Conectar
-            store.connect(emailAccount.getUsername(), emailAccount.getPassword());
-            log.info("Connected to {} account: {}", emailAccount.getEmailType(), 
+            // ------------------------------------------
+
+            store.connect( emailAccount.getHost(), emailAccount.getPort(), emailAccount.getUsername(), rawPassword);
+
+            log.info("Connected to {} account: {}", emailAccount.getEmailType(),
                     emailAccount.getEmailAddress());
 
+            // ------------------------------------------
             // Abrir carpeta
+            // ------------------------------------------
+
             Folder folder = store.getFolder(emailAccount.getFolderName());
             folder.open(Folder.READ_ONLY);
             log.info("Opened folder: {} with {} messages", 
                     emailAccount.getFolderName(), folder.getMessageCount());
 
+            // ------------------------------------------
             // Obtener mensajes
+            // ------------------------------------------
             Message[] messages = folder.getMessages();
 
+            // ------------------------------------------
             // Procesar cada mensaje
+            // ------------------------------------------
+
             for (Message message : messages) {
                 try {
                     // Obtener UID del mensaje

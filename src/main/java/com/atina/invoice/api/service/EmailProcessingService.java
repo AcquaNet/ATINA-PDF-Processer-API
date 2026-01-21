@@ -46,7 +46,11 @@ public class EmailProcessingService {
         log.info("🔍 Processing emails from: {}", emailAccount.getEmailAddress());
 
         try {
-            // 1. Leer emails nuevos desde el servidor
+
+            // ----------------------------------------------
+            // Leer emails nuevos desde el servidor
+            // ----------------------------------------------
+
             List<EmailReaderService.EmailMessage> newEmails = 
                     emailReaderService.readNewEmails(emailAccount);
 
@@ -58,7 +62,10 @@ public class EmailProcessingService {
 
             log.info("📧 Found {} new emails in {}", newEmails.size(), emailAccount.getEmailAddress());
 
-            // 2. Procesar cada email
+            // ----------------------------------------------
+            // Procesar cada email
+            // ----------------------------------------------
+
             int processedCount = 0;
             String lastProcessedUid = emailAccount.getLastProcessedUid();
 

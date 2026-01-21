@@ -164,3 +164,6 @@ springdoc:
 mcp:
   enabled: true
 
+email:
+  crypt:
+    key-base64: iRC660hR0ACDBVOhHGaz6klFpK7BlcMqVCefR18Iyz0=

@@ -9,11 +9,11 @@ import com.atina.invoice.api.model.Tenant;
 import com.atina.invoice.api.model.enums.EmailType;
 import com.atina.invoice.api.repository.EmailAccountRepository;
 import com.atina.invoice.api.repository.TenantRepository;
+import com.atina.invoice.api.security.AesGcmCrypto;
 import com.atina.invoice.api.security.TenantContext;
 import jakarta.mail.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,7 +32,7 @@ public class EmailAccountService {
     private final EmailAccountRepository emailAccountRepository;
     private final TenantRepository tenantRepository;
     private final EmailAccountMapper emailAccountMapper;
-    private final PasswordEncoder passwordEncoder;
+    private final AesGcmCrypto aesGcmCrypto;
 
     /**
      * Listar todas las cuentas del tenant actual
@@ -72,7 +72,7 @@ public class EmailAccountService {
         EmailAccount account = emailAccountMapper.toEntity(request, tenant);
         
         // Encriptar contraseña
-        account.setPassword(passwordEncoder.encode(request.getPassword()));
+        account.setPassword(aesGcmCrypto.encryptToBase64(request.getPassword()));
 
         // Guardar
         EmailAccount saved = emailAccountRepository.save(account);
@@ -102,7 +102,7 @@ public class EmailAccountService {
 
         // Si se actualiza la contraseña, encriptarla
         if (request.getPassword() != null) {
-            account.setPassword(passwordEncoder.encode(request.getPassword()));
+            account.setPassword(aesGcmCrypto.encryptToBase64(request.getPassword()));
         }
 
         // Guardar

@@ -2,13 +2,10 @@ package com.atina.invoice.api.repository;
 
 import com.atina.invoice.api.model.ProcessedEmail;
 import com.atina.invoice.api.model.enums.EmailProcessingStatus;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -16,24 +13,25 @@ import java.util.Optional;
 public interface ProcessedEmailRepository extends JpaRepository<ProcessedEmail, Long> {
 
     /**
-     * Buscar por tenant y email account UID
-     */
-    Optional<ProcessedEmail> findByEmailAccountIdAndEmailUid(Long emailAccountId, String emailUid);
-
-    /**
-     * Verificar si ya existe un email procesado
+     * ⭐ NUEVO: Verificar si ya existe un email procesado por account y UID
+     * Usado para evitar reprocesar el mismo email
      */
     boolean existsByEmailAccountIdAndEmailUid(Long emailAccountId, String emailUid);
 
     /**
-     * Listar emails procesados por tenant
+     * Buscar email por account y UID
      */
-    Page<ProcessedEmail> findByTenantId(Long tenantId, Pageable pageable);
+    Optional<ProcessedEmail> findByEmailAccountIdAndEmailUid(Long emailAccountId, String emailUid);
 
     /**
-     * Listar emails procesados por email account
+     * Listar emails de una cuenta
      */
-    Page<ProcessedEmail> findByEmailAccountId(Long emailAccountId, Pageable pageable);
+    List<ProcessedEmail> findByEmailAccountId(Long emailAccountId);
+
+    /**
+     * Listar emails de un tenant
+     */
+    List<ProcessedEmail> findByTenantId(Long tenantId);
 
     /**
      * Listar emails por estado
@@ -41,33 +39,14 @@ public interface ProcessedEmailRepository extends JpaRepository<ProcessedEmail, 
     List<ProcessedEmail> findByProcessingStatus(EmailProcessingStatus status);
 
     /**
-     * Listar emails por tenant y estado
+     * Listar emails de un sender rule
      */
-    Page<ProcessedEmail> findByTenantIdAndProcessingStatus(
-            Long tenantId, EmailProcessingStatus status, Pageable pageable);
+    List<ProcessedEmail> findBySenderRuleId(Long senderRuleId);
 
     /**
-     * Listar emails procesados desde una fecha
+     * Listar emails sin sender rule (ignorados)
      */
-    List<ProcessedEmail> findByProcessedDateAfter(Instant date);
-
-    /**
-     * Listar emails sin notificación de recepción enviada
-     */
-    @Query("SELECT e FROM ProcessedEmail e WHERE e.receivedNotificationSent = false " +
-           "AND e.processingStatus != 'IGNORED' " +
-           "AND e.senderRule IS NOT NULL " +
-           "AND e.senderRule.autoReplyEnabled = true")
-    List<ProcessedEmail> findEmailsPendingReceivedNotification();
-
-    /**
-     * Listar emails sin notificación de procesamiento enviada
-     */
-    @Query("SELECT e FROM ProcessedEmail e WHERE e.processedNotificationSent = false " +
-           "AND e.processingStatus = 'COMPLETED' " +
-           "AND e.senderRule IS NOT NULL " +
-           "AND e.senderRule.autoReplyEnabled = true")
-    List<ProcessedEmail> findEmailsPendingProcessedNotification();
+    List<ProcessedEmail> findBySenderRuleIsNull();
 
     /**
      * Contar emails por estado
@@ -75,8 +54,20 @@ public interface ProcessedEmailRepository extends JpaRepository<ProcessedEmail, 
     long countByProcessingStatus(EmailProcessingStatus status);
 
     /**
-     * Contar emails procesados hoy
+     * Contar emails de una cuenta
      */
-    @Query("SELECT COUNT(e) FROM ProcessedEmail e WHERE e.processedDate >= :startOfDay")
-    long countProcessedToday(Instant startOfDay);
+    long countByEmailAccountId(Long emailAccountId);
+
+    /**
+     * Buscar emails con attachments procesados
+     */
+    @Query("SELECT e FROM ProcessedEmail e WHERE e.processedAttachments > 0")
+    List<ProcessedEmail> findEmailsWithProcessedAttachments();
+
+    /**
+     * Buscar emails pendientes de procesamiento
+     */
+    @Query("SELECT e FROM ProcessedEmail e WHERE e.processingStatus = 'PROCESSING' " +
+            "OR e.processingStatus = 'PENDING'")
+    List<ProcessedEmail> findPendingEmails();
 }

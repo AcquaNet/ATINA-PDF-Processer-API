@@ -1,141 +1,142 @@
 package com.atina.invoice.api.controller;
 
-import com.atina.invoice.api.dto.response.ApiResponse;
-import com.atina.invoice.api.model.ProcessedEmail;
-import com.atina.invoice.api.repository.ProcessedEmailRepository;
-import com.atina.invoice.api.scheduler.EmailPollingScheduler;
-import com.atina.invoice.api.security.TenantContext;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-import io.swagger.v3.oas.annotations.tags.Tag;
+import com.atina.invoice.api.service.EmailPollingService;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
-import java.util.Map;
-
 /**
- * Controller para gestión de polling de emails
+ * Controller para polling manual de emails
+ *
+ * Permite hacer polling de emails manualmente via API, independientemente
+ * del estado del scheduler (email.polling.enabled).
+ *
+ * IMPORTANTE: Este controller usa EmailPollingService que está SIEMPRE disponible,
+ * incluso cuando el scheduler está deshabilitado.
+ *
+ * Endpoints:
+ * - POST /api/email-polling/poll-all - Hacer polling de todas las cuentas
+ * - POST /api/email-polling/poll/{accountId} - Hacer polling de una cuenta específica
  */
+@Slf4j
 @RestController
-@RequestMapping("/api/v1/email-polling")
+@RequestMapping("/api/email-polling")
 @RequiredArgsConstructor
-@Tag(name = "Email Polling", description = "Email polling and processed emails management")
-@SecurityRequirement(name = "bearer-jwt")
 public class EmailPollingController {
 
-    private final EmailPollingScheduler pollingScheduler;
-    private final ProcessedEmailRepository processedEmailRepository;
+    /**
+     * ⭐ IMPORTANTE: Usa EmailPollingService, NO EmailPollingScheduler
+     *
+     * Esto permite que el controller funcione incluso cuando:
+     * - email.polling.enabled=false (scheduler deshabilitado)
+     * - El scheduler está pausado o no está corriendo
+     *
+     * EmailPollingService es un @Service normal que siempre está disponible
+     */
+    private final EmailPollingService pollingService;
 
-    @PostMapping("/poll-now/{emailAccountId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
-    @Operation(
-        summary = "[ADMIN] Poll emails now",
-        description = "Trigger manual polling for a specific email account"
-    )
-    public ResponseEntity<ApiResponse<Map<String, Object>>> pollNow(
-            @Parameter(description = "Email account ID") @PathVariable Long emailAccountId) {
+    /**
+     * Hacer polling de todas las cuentas que lo necesitan
+     *
+     * POST /api/email-polling/poll-all
+     *
+     * Respuesta:
+     * {
+     *   "success": true,
+     *   "emailsProcessed": 15,
+     *   "message": "Processed 15 emails from active accounts"
+     * }
+     */
+    @PostMapping("/poll-all")
+    public ResponseEntity<PollResponse> pollAllAccounts() {
+        log.info("📨 Manual polling triggered for all accounts");
 
-        int emailsProcessed = pollingScheduler.pollAccountNow(emailAccountId);
+        try {
+            int emailsProcessed = pollingService.pollAllAccounts();
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("email_account_id", emailAccountId);
-        result.put("emails_processed", emailsProcessed);
-        result.put("message", emailsProcessed > 0 
-                ? "Successfully processed " + emailsProcessed + " emails"
-                : "No new emails found");
+            PollResponse response = new PollResponse();
+            response.setSuccess(true);
+            response.setEmailsProcessed(emailsProcessed);
+            response.setMessage(String.format("Processed %d emails from active accounts", emailsProcessed));
 
-        return ResponseEntity.ok(ApiResponse.success(result));
-    }
+            log.info("✅ Manual polling completed: {} emails", emailsProcessed);
 
-    @GetMapping("/processed-emails")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
-    @Operation(
-        summary = "[ADMIN] List processed emails",
-        description = "Get paginated list of processed emails for the current tenant"
-    )
-    public ResponseEntity<ApiResponse<Page<ProcessedEmail>>> getProcessedEmails(
-            @Parameter(description = "Page number (0-based)") @RequestParam(defaultValue = "0") int page,
-            @Parameter(description = "Page size") @RequestParam(defaultValue = "20") int size,
-            @Parameter(description = "Sort by field") @RequestParam(defaultValue = "processedDate") String sortBy,
-            @Parameter(description = "Sort direction") @RequestParam(defaultValue = "DESC") String sortDir) {
+            return ResponseEntity.ok(response);
 
-        Long tenantId = TenantContext.getTenantId();
+        } catch (Exception e) {
+            log.error("❌ Error in manual polling: {}", e.getMessage(), e);
 
-        Sort sort = sortDir.equalsIgnoreCase("ASC") 
-                ? Sort.by(sortBy).ascending() 
-                : Sort.by(sortBy).descending();
+            PollResponse response = new PollResponse();
+            response.setSuccess(false);
+            response.setEmailsProcessed(0);
+            response.setMessage("Error: " + e.getMessage());
 
-        Pageable pageable = PageRequest.of(page, size, sort);
-
-        Page<ProcessedEmail> emails = processedEmailRepository.findByTenantId(tenantId, pageable);
-
-        return ResponseEntity.ok(ApiResponse.success(emails));
-    }
-
-    @GetMapping("/processed-emails/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
-    @Operation(
-        summary = "[ADMIN] Get processed email",
-        description = "Get details of a specific processed email including all attachments"
-    )
-    public ResponseEntity<ApiResponse<ProcessedEmail>> getProcessedEmail(
-            @Parameter(description = "Processed email ID") @PathVariable Long id) {
-
-        Long tenantId = TenantContext.getTenantId();
-
-        ProcessedEmail email = processedEmailRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Processed email not found: " + id));
-
-        // Verificar que pertenece al tenant
-        if (!email.getTenant().getId().equals(tenantId)) {
-            throw new RuntimeException("Processed email does not belong to current tenant");
+            return ResponseEntity.internalServerError().body(response);
         }
-
-        return ResponseEntity.ok(ApiResponse.success(email));
     }
 
-    @GetMapping("/stats")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
-    @Operation(
-        summary = "[ADMIN] Get polling statistics",
-        description = "Get statistics about email processing for the current tenant"
-    )
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getStats() {
-        Long tenantId = TenantContext.getTenantId();
+    /**
+     * Hacer polling de una cuenta específica
+     *
+     * POST /api/email-polling/poll/{accountId}
+     *
+     * @param accountId ID de la cuenta de email
+     *
+     * Respuesta:
+     * {
+     *   "success": true,
+     *   "emailsProcessed": 5,
+     *   "message": "Processed 5 emails from account"
+     * }
+     */
+    @PostMapping("/poll/{accountId}")
+    public ResponseEntity<PollResponse> pollAccount(@PathVariable Long accountId) {
+        log.info("📨 Manual polling triggered for account ID: {}", accountId);
 
-        Map<String, Object> stats = new HashMap<>();
+        try {
+            int emailsProcessed = pollingService.pollAccountNow(accountId);
 
-        // Contar por estado
-        long totalEmails = processedEmailRepository.countByProcessingStatus(
-                com.atina.invoice.api.model.enums.EmailProcessingStatus.COMPLETED);
-        long pendingEmails = processedEmailRepository.countByProcessingStatus(
-                com.atina.invoice.api.model.enums.EmailProcessingStatus.PENDING);
-        long failedEmails = processedEmailRepository.countByProcessingStatus(
-                com.atina.invoice.api.model.enums.EmailProcessingStatus.FAILED);
-        long ignoredEmails = processedEmailRepository.countByProcessingStatus(
-                com.atina.invoice.api.model.enums.EmailProcessingStatus.IGNORED);
+            PollResponse response = new PollResponse();
+            response.setSuccess(true);
+            response.setEmailsProcessed(emailsProcessed);
+            response.setMessage(String.format("Processed %d emails from account", emailsProcessed));
 
-        // Contar hoy
-        java.time.Instant startOfDay = java.time.LocalDate.now()
-                .atStartOfDay(java.time.ZoneId.systemDefault())
-                .toInstant();
-        long processedToday = processedEmailRepository.countProcessedToday(startOfDay);
+            log.info("✅ Manual polling completed: {} emails from account {}",
+                    emailsProcessed, accountId);
 
-        stats.put("total_completed", totalEmails);
-        stats.put("pending", pendingEmails);
-        stats.put("failed", failedEmails);
-        stats.put("ignored", ignoredEmails);
-        stats.put("processed_today", processedToday);
-        stats.put("tenant_id", tenantId);
+            return ResponseEntity.ok(response);
 
-        return ResponseEntity.ok(ApiResponse.success(stats));
+        } catch (RuntimeException e) {
+            log.error("❌ Error in manual polling: {}", e.getMessage());
+
+            PollResponse response = new PollResponse();
+            response.setSuccess(false);
+            response.setEmailsProcessed(0);
+            response.setMessage("Error: " + e.getMessage());
+
+            return ResponseEntity.badRequest().body(response);
+
+        } catch (Exception e) {
+            log.error("❌ Unexpected error in manual polling: {}", e.getMessage(), e);
+
+            PollResponse response = new PollResponse();
+            response.setSuccess(false);
+            response.setEmailsProcessed(0);
+            response.setMessage("Error: " + e.getMessage());
+
+            return ResponseEntity.internalServerError().body(response);
+        }
+    }
+
+    /**
+     * Response DTO
+     */
+    @Data
+    public static class PollResponse {
+        private boolean success;
+        private int emailsProcessed;
+        private String message;
     }
 }

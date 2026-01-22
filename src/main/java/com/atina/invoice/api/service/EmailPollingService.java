@@ -34,58 +34,85 @@ public class EmailPollingService {
      * @return Número total de emails procesados
      */
     public int pollAllAccounts() {
-        log.info("🔄 Starting polling of all accounts...");
+
+        log.info("  BEGIN EMAIL POOLING SERVICE: 🔄 Starting polling of all accounts...");
 
         try {
+
+            // -----------------------------------------------
             // Obtener cuentas habilitadas para polling
+            // -----------------------------------------------
+
             List<EmailAccount> activeAccounts = emailAccountRepository.findAllWithPollingEnabled();
 
             if (activeAccounts.isEmpty()) {
-                log.info("ℹ️  No email accounts enabled for polling");
+                log.info("  EMAIL POOLING SERVICE: ℹ️  No email accounts enabled for polling");
                 return 0;
             }
 
-            log.info("📧 Found {} email accounts enabled for polling", activeAccounts.size());
+            log.info("  EMAIL POOLING SERVICE: 📧 Found {} email accounts enabled for polling", activeAccounts.size());
 
             int accountsProcessed = 0;
             int totalEmailsProcessed = 0;
 
-            for (EmailAccount account : activeAccounts) {
-                try {
-                    // Verificar si ya es hora de hacer polling
-                    if (shouldPoll(account)) {
-                        log.info("📨 Polling emails from: {}", account.getEmailAddress());
+            // -----------------------------------------------
+            // Procesar cada cuenta
+            // -----------------------------------------------
 
+            for (EmailAccount account : activeAccounts) {
+
+                try {
+
+                    log.info("  EMAIL POOLING SERVICE: 📧 Processing mail {}", account.getEmailAddress());
+
+                    // ------------------------------------------
+                    // Verificar si ya es hora de hacer polling
+                    // ------------------------------------------
+
+                    if (shouldPoll(account)) {
+
+                        log.info("  EMAIL POOLING SERVICE: 📨 Polling emails from: {}", account.getEmailAddress());
+
+                        // ------------------------------------------
                         // Procesar emails de esta cuenta
+                        // ------------------------------------------
+
                         int emailsProcessed = emailProcessingService.processEmailsFromAccount(account);
 
                         accountsProcessed++;
                         totalEmailsProcessed += emailsProcessed;
 
                         if (emailsProcessed > 0) {
-                            log.info("✅ Processed {} emails from {}",
+                            log.info("  EMAIL POOLING SERVICE: ✅ Processed {} emails from {}",
                                     emailsProcessed, account.getEmailAddress());
                         }
+
                     } else {
-                        log.debug("⏭️  Skipping {} - next poll in {} minutes",
+
+                        log.debug("  EMAIL POOLING SERVICE: ⏭️  Skipping {} - next poll in {} minutes",
                                 account.getEmailAddress(), getMinutesUntilNextPoll(account));
+
                     }
 
                 } catch (Exception e) {
-                    log.error("❌ Error polling account {}: {}",
+
+                    log.error("  EMAIL POOLING SERVICE: ❌ Error polling account {}: {}",
                             account.getEmailAddress(), e.getMessage(), e);
+
                 }
             }
 
             if (accountsProcessed > 0) {
-                log.info("✅ Polling completed: {} accounts processed, {} emails total",
+                log.info("  EMAIL POOLING SERVICE: ✅ Polling completed: {} accounts processed, {} emails total",
                         accountsProcessed, totalEmailsProcessed);
             }
+
+            log.info("  END EMAIL POOLING SERVICE: {} emails processed in total", totalEmailsProcessed);
 
             return totalEmailsProcessed;
 
         } catch (Exception e) {
-            log.error("❌ Error in polling all accounts: {}", e.getMessage(), e);
+            log.error("  END EMAIL POOLING SERVICE:❌ Error in polling all accounts: {}", e.getMessage(), e);
             return 0;
         }
     }
@@ -119,17 +146,27 @@ public class EmailPollingService {
      * Verificar si una cuenta debe ser polleada ahora
      */
     private boolean shouldPoll(EmailAccount account) {
+
+        // ------------------------------------------
         // Si nunca fue polleada, hacerlo ahora
+        // ------------------------------------------
+
         if (account.getLastPollDate() == null) {
             return true;
         }
 
+        // ------------------------------------------
         // Calcular tiempo desde último poll
+        // ------------------------------------------
+
         Instant now = Instant.now();
         long minutesSinceLastPoll = ChronoUnit.MINUTES.between(
                 account.getLastPollDate(), now);
 
+        // ------------------------------------------
         // Comparar con el intervalo configurado
+        // ------------------------------------------
+
         Integer pollingInterval = account.getPollingIntervalMinutes();
         if (pollingInterval == null) {
             pollingInterval = 10; // Default: 10 minutos

@@ -227,19 +227,25 @@ public class EmailReaderService {
             store = session.getStore("pop3");
         }
 
+        // --------------
         // Conectar
+        // --------------
+
         store.connect(emailAccount.getHost(), emailAccount.getPort(),
                 emailAccount.getUsername(), rawPassword);
 
-        log.info("Connected to {} account: {}", emailAccount.getEmailType(),
+        log.info("      Process EmailReadContext: Connected to {} account: {}", emailAccount.getEmailType(),
                 emailAccount.getEmailAddress());
 
+        // -------------------------------------
         // Abrir carpeta en el modo apropiado
+        // -------------------------------------
+
         Folder folder = store.getFolder(emailAccount.getFolderName());
         int mode = readWrite ? Folder.READ_WRITE : Folder.READ_ONLY;
         folder.open(mode);
 
-        log.info("Opened folder: {} in {} mode with {} messages",
+        log.info("      Process EmailReadContext: Opened folder: {} in {} mode with {} messages",
                 emailAccount.getFolderName(),
                 readWrite ? "READ_WRITE" : "READ_ONLY",
                 folder.getMessageCount());

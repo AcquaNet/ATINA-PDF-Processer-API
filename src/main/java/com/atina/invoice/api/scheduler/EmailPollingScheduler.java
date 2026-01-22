@@ -52,18 +52,24 @@ public class EmailPollingScheduler {
      */
     @Scheduled(fixedRate = 60000) // 60 segundos = 1 minuto
     public void pollEmails() {
-        log.debug("🔄 Running email polling scheduler...");
+
+        log.debug("BEGIN EMAIL POLLING: 🔄 Running email polling scheduler...");
 
         try {
-            // ⭐ SIMPLIFICADO: Toda la lógica está en el servicio
+
+
+            // -----------------------------------------------
+            // Invocar el servicio compartido para polling
+            // -----------------------------------------------
+
             int totalEmailsProcessed = pollingService.pollAllAccounts();
 
             if (totalEmailsProcessed > 0) {
-                log.info("✅ Scheduler: Processed {} emails", totalEmailsProcessed);
+                log.info("END EMAIL POLLING: ✅ Scheduler: Processed {} emails", totalEmailsProcessed);
             }
 
         } catch (Exception e) {
-            log.error("❌ Error in email polling scheduler: {}", e.getMessage(), e);
+            log.error("END EMAIL POLLING: ❌ Error in email polling scheduler: {}", e.getMessage(), e);
         }
     }
 }

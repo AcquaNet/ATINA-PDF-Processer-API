@@ -54,10 +54,10 @@ public class EmailAccountController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(
-        summary = "[ADMIN] Create email account",
-        description = "Create a new email account for monitoring. Supports IMAP and POP3."
+        summary = "[SYSTEM_ADMIN] Create email account",
+        description = "Create a new email account for monitoring. Supports IMAP and POP3. Tenant ID must be provided in the request."
     )
     public ResponseEntity<ApiResponse<EmailAccountResponse>> createAccount(
             @Valid @RequestBody CreateEmailAccountRequest request) {

@@ -59,7 +59,7 @@ public class EmailAccountService {
      */
     @Transactional
     public EmailAccountResponse createAccount(CreateEmailAccountRequest request) {
-        Long tenantId = TenantContext.getTenantId();
+        Long tenantId = request.getTenantId();
         Tenant tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new RuntimeException("Tenant not found: " + tenantId));
 

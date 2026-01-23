@@ -16,6 +16,9 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class CreateEmailAccountRequest {
 
+    @NotNull(message = "Tenant ID is required")
+    private Long tenantId;
+
     @NotBlank(message = "Email address is required")
     @Email(message = "Email address must be valid")
     private String emailAddress;

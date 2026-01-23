@@ -32,7 +32,7 @@ public class AttachmentRuleController {
     private final AttachmentRuleService attachmentRuleService;
 
     @GetMapping("/sender-rules/{senderRuleId}/attachment-rules")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(
         summary = "[ADMIN] List attachment rules",
         description = "Get all attachment processing rules for a sender rule"
@@ -44,7 +44,7 @@ public class AttachmentRuleController {
     }
 
     @GetMapping("/attachment-rules/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(
         summary = "[ADMIN] Get attachment rule",
         description = "Get attachment processing rule details"
@@ -56,7 +56,7 @@ public class AttachmentRuleController {
     }
 
     @PostMapping("/sender-rules/{senderRuleId}/attachment-rules")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(
         summary = "[ADMIN] Create attachment rule",
         description = "Create a new attachment processing rule with regex pattern matching"
@@ -69,7 +69,7 @@ public class AttachmentRuleController {
     }
 
     @PutMapping("/attachment-rules/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(
         summary = "[ADMIN] Update attachment rule",
         description = "Update attachment processing rule (all fields optional)"
@@ -94,7 +94,7 @@ public class AttachmentRuleController {
     }
 
     @PatchMapping("/attachment-rules/{id}/reorder")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(
         summary = "[ADMIN] Reorder rule",
         description = "Change the execution order of an attachment rule"
@@ -107,7 +107,7 @@ public class AttachmentRuleController {
     }
 
     @PostMapping("/attachment-rules/test-regex")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(
         summary = "[ADMIN] Test regex pattern",
         description = """

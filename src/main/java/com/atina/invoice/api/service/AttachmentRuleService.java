@@ -60,7 +60,11 @@ public class AttachmentRuleService {
      */
     @Transactional
     public AttachmentProcessingRuleResponse createRule(Long senderRuleId, CreateAttachmentRuleRequest request) {
+
+        // ------------------------------------
         // Validar sender rule
+        // ------------------------------------
+
         EmailSenderRule senderRule = findSenderRuleByIdAndTenant(senderRuleId);
 
         // Validar que no exista una regla con ese orden

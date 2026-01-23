@@ -3,6 +3,7 @@ package com.atina.invoice.api.service;
 import com.atina.invoice.api.dto.request.CreateEmailAccountRequest;
 import com.atina.invoice.api.dto.request.UpdateEmailAccountRequest;
 import com.atina.invoice.api.dto.response.EmailAccountResponse;
+import com.atina.invoice.api.dto.response.EmailAccountsByTenantResponse;
 import com.atina.invoice.api.mapper.EmailAccountMapper;
 import com.atina.invoice.api.model.EmailAccount;
 import com.atina.invoice.api.model.Tenant;
@@ -10,15 +11,13 @@ import com.atina.invoice.api.model.enums.EmailType;
 import com.atina.invoice.api.repository.EmailAccountRepository;
 import com.atina.invoice.api.repository.TenantRepository;
 import com.atina.invoice.api.security.AesGcmCrypto;
-import com.atina.invoice.api.security.TenantContext;
 import jakarta.mail.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.Properties;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -35,22 +34,22 @@ public class EmailAccountService {
     private final AesGcmCrypto aesGcmCrypto;
 
     /**
-     * Listar todas las cuentas del tenant actual
+     * Listar todas las cuentas de todos los tenants (solo para SYSTEM_ADMIN)
      */
     @Transactional(readOnly = true)
     public List<EmailAccountResponse> getAllAccounts() {
-        Long tenantId = TenantContext.getTenantId();
-        return emailAccountRepository.findByTenantId(tenantId).stream()
+        return emailAccountRepository.findAll().stream()
                 .map(emailAccountMapper::toResponse)
                 .collect(Collectors.toList());
     }
 
     /**
-     * Obtener cuenta por ID
+     * Obtener cuenta por ID (sin validar tenant - solo para SYSTEM_ADMIN)
      */
     @Transactional(readOnly = true)
     public EmailAccountResponse getAccountById(Long id) {
-        EmailAccount account = findAccountByIdAndTenant(id);
+        EmailAccount account = emailAccountRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Email account not found: " + id));
         return emailAccountMapper.toResponse(account);
     }
 
@@ -82,14 +81,15 @@ public class EmailAccountService {
     }
 
     /**
-     * Actualizar cuenta de email
+     * Actualizar cuenta de email (sin validar tenant - solo para SYSTEM_ADMIN)
      */
     @Transactional
     public EmailAccountResponse updateAccount(Long id, UpdateEmailAccountRequest request) {
-        EmailAccount account = findAccountByIdAndTenant(id);
+        EmailAccount account = emailAccountRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Email account not found: " + id));
 
         // Si se actualiza el email, validar que no exista
-        if (request.getEmailAddress() != null && 
+        if (request.getEmailAddress() != null &&
             !request.getEmailAddress().equals(account.getEmailAddress())) {
             if (emailAccountRepository.existsByTenantIdAndEmailAddress(
                     account.getTenant().getId(), request.getEmailAddress())) {
@@ -113,21 +113,23 @@ public class EmailAccountService {
     }
 
     /**
-     * Eliminar cuenta de email
+     * Eliminar cuenta de email (sin validar tenant - solo para SYSTEM_ADMIN)
      */
     @Transactional
     public void deleteAccount(Long id) {
-        EmailAccount account = findAccountByIdAndTenant(id);
+        EmailAccount account = emailAccountRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Email account not found: " + id));
         emailAccountRepository.delete(account);
         log.info("Deleted email account: {}", account.getEmailAddress());
     }
 
     /**
-     * Habilitar/deshabilitar polling
+     * Habilitar/deshabilitar polling (sin validar tenant - solo para SYSTEM_ADMIN)
      */
     @Transactional
     public EmailAccountResponse togglePolling(Long id, boolean enabled) {
-        EmailAccount account = findAccountByIdAndTenant(id);
+        EmailAccount account = emailAccountRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Email account not found: " + id));
         account.setPollingEnabled(enabled);
         EmailAccount saved = emailAccountRepository.save(account);
         log.info("Toggled polling for {}: {}", account.getEmailAddress(), enabled);
@@ -135,10 +137,11 @@ public class EmailAccountService {
     }
 
     /**
-     * Probar conexión a la cuenta de email
+     * Probar conexión a la cuenta de email (sin validar tenant - solo para SYSTEM_ADMIN)
      */
     public String testConnection(Long id) {
-        EmailAccount account = findAccountByIdAndTenant(id);
+        EmailAccount account = emailAccountRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Email account not found: " + id));
         
         try {
             // Desencriptar contraseña
@@ -200,17 +203,34 @@ public class EmailAccountService {
     }
 
     /**
-     * Helper: Buscar cuenta por ID y validar que pertenece al tenant actual
+     * Listar todas las cuentas agrupadas por tenant (solo para SYSTEM_ADMIN)
      */
-    private EmailAccount findAccountByIdAndTenant(Long id) {
-        Long tenantId = TenantContext.getTenantId();
-        EmailAccount account = emailAccountRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Email account not found: " + id));
+    @Transactional(readOnly = true)
+    public List<EmailAccountsByTenantResponse> getAccountsByTenant() {
+        List<EmailAccount> allAccounts = emailAccountRepository.findAll();
 
-        if (!account.getTenant().getId().equals(tenantId)) {
-            throw new RuntimeException("Email account does not belong to current tenant");
-        }
+        // Agrupar por tenant
+        Map<Tenant, List<EmailAccount>> accountsByTenant = allAccounts.stream()
+                .collect(Collectors.groupingBy(EmailAccount::getTenant));
 
-        return account;
+        // Convertir a response
+        return accountsByTenant.entrySet().stream()
+                .map(entry -> {
+                    Tenant tenant = entry.getKey();
+                    List<EmailAccount> accounts = entry.getValue();
+
+                    return EmailAccountsByTenantResponse.builder()
+                            .tenantId(tenant.getId())
+                            .tenantCode(tenant.getTenantCode())
+                            .tenantName(tenant.getTenantName())
+                            .totalAccounts(accounts.size())
+                            .accounts(accounts.stream()
+                                    .map(emailAccountMapper::toResponse)
+                                    .collect(Collectors.toList()))
+                            .build();
+                })
+                .sorted(Comparator.comparing(EmailAccountsByTenantResponse::getTenantCode))
+                .collect(Collectors.toList());
     }
+
 }

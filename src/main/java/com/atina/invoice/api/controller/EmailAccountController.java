@@ -4,6 +4,7 @@ import com.atina.invoice.api.dto.request.CreateEmailAccountRequest;
 import com.atina.invoice.api.dto.request.UpdateEmailAccountRequest;
 import com.atina.invoice.api.dto.response.ApiResponse;
 import com.atina.invoice.api.dto.response.EmailAccountResponse;
+import com.atina.invoice.api.dto.response.EmailAccountsByTenantResponse;
 import com.atina.invoice.api.service.EmailAccountService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -31,21 +32,32 @@ public class EmailAccountController {
     private final EmailAccountService emailAccountService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(
-        summary = "[ADMIN] List email accounts",
-        description = "Get all email accounts configured for the current tenant"
+        summary = "[SYSTEM_ADMIN] List all email accounts",
+        description = "Get all email accounts from all tenants"
     )
     public ResponseEntity<ApiResponse<List<EmailAccountResponse>>> getAllAccounts() {
         List<EmailAccountResponse> accounts = emailAccountService.getAllAccounts();
         return ResponseEntity.ok(ApiResponse.success(accounts));
     }
 
-    @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
+    @GetMapping("/by-tenant")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(
-        summary = "[ADMIN] Get email account",
-        description = "Get email account details by ID"
+        summary = "[SYSTEM_ADMIN] List email accounts grouped by tenant",
+        description = "Get all email accounts grouped by tenant with summary information"
+    )
+    public ResponseEntity<ApiResponse<List<EmailAccountsByTenantResponse>>> getAccountsByTenant() {
+        List<EmailAccountsByTenantResponse> accountsByTenant = emailAccountService.getAccountsByTenant();
+        return ResponseEntity.ok(ApiResponse.success(accountsByTenant));
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    @Operation(
+        summary = "[SYSTEM_ADMIN] Get email account",
+        description = "Get email account details by ID from any tenant"
     )
     public ResponseEntity<ApiResponse<EmailAccountResponse>> getAccountById(
             @Parameter(description = "Email account ID") @PathVariable Long id) {
@@ -66,10 +78,10 @@ public class EmailAccountController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(
-        summary = "[ADMIN] Update email account",
-        description = "Update email account configuration (all fields optional)"
+        summary = "[SYSTEM_ADMIN] Update email account",
+        description = "Update email account configuration from any tenant (all fields optional)"
     )
     public ResponseEntity<ApiResponse<EmailAccountResponse>> updateAccount(
             @Parameter(description = "Email account ID") @PathVariable Long id,
@@ -91,10 +103,10 @@ public class EmailAccountController {
     }
 
     @PatchMapping("/{id}/toggle-polling")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(
-        summary = "[ADMIN] Toggle polling",
-        description = "Enable or disable automatic email polling for this account"
+        summary = "[SYSTEM_ADMIN] Toggle polling",
+        description = "Enable or disable automatic email polling for any account from any tenant"
     )
     public ResponseEntity<ApiResponse<EmailAccountResponse>> togglePolling(
             @Parameter(description = "Email account ID") @PathVariable Long id,
@@ -104,10 +116,10 @@ public class EmailAccountController {
     }
 
     @PostMapping("/{id}/test-connection")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(
-        summary = "[ADMIN] Test connection",
-        description = "Test IMAP/POP3 connection to verify credentials and configuration"
+        summary = "[SYSTEM_ADMIN] Test connection",
+        description = "Test IMAP/POP3 connection to verify credentials and configuration for any account from any tenant"
     )
     public ResponseEntity<ApiResponse<String>> testConnection(
             @Parameter(description = "Email account ID") @PathVariable Long id) {

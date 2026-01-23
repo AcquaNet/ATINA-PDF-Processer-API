@@ -32,10 +32,10 @@ public class EmailSenderRuleController {
     private final EmailSenderRuleService senderRuleService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(
-        summary = "[ADMIN] List sender rules",
-        description = "Get all sender rules configured for the current tenant"
+        summary = "[SYSTEM_ADMIN] List all sender rules",
+        description = "Get all sender rules from all tenants"
     )
     public ResponseEntity<ApiResponse<List<EmailSenderRuleResponse>>> getAllRules() {
         List<EmailSenderRuleResponse> rules = senderRuleService.getAllRules();
@@ -43,10 +43,10 @@ public class EmailSenderRuleController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(
-        summary = "[ADMIN] Get sender rule",
-        description = "Get sender rule details including attachment processing rules"
+        summary = "[SYSTEM_ADMIN] Get sender rule",
+        description = "Get sender rule details from any tenant, including attachment processing rules"
     )
     public ResponseEntity<ApiResponse<EmailSenderRuleResponse>> getRuleById(
             @Parameter(description = "Sender rule ID") @PathVariable Long id) {
@@ -55,10 +55,10 @@ public class EmailSenderRuleController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(
-        summary = "[ADMIN] Create sender rule",
-        description = "Create a new sender rule to define how to process emails from a specific sender"
+        summary = "[SYSTEM_ADMIN] Create sender rule",
+        description = "Create a new sender rule for any email account to define how to process emails from a specific sender"
     )
     public ResponseEntity<ApiResponse<EmailSenderRuleResponse>> createRule(
             @Valid @RequestBody CreateEmailSenderRuleRequest request) {
@@ -67,10 +67,10 @@ public class EmailSenderRuleController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(
-        summary = "[ADMIN] Update sender rule",
-        description = "Update sender rule configuration (all fields optional)"
+        summary = "[SYSTEM_ADMIN] Update sender rule",
+        description = "Update sender rule configuration from any tenant (all fields optional)"
     )
     public ResponseEntity<ApiResponse<EmailSenderRuleResponse>> updateRule(
             @Parameter(description = "Sender rule ID") @PathVariable Long id,
@@ -83,7 +83,7 @@ public class EmailSenderRuleController {
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(
         summary = "[SYSTEM_ADMIN] Delete sender rule",
-        description = "Permanently delete a sender rule and all its attachment processing rules"
+        description = "Permanently delete a sender rule from any tenant and all its attachment processing rules"
     )
     public ResponseEntity<ApiResponse<Void>> deleteRule(
             @Parameter(description = "Sender rule ID") @PathVariable Long id) {
@@ -92,11 +92,11 @@ public class EmailSenderRuleController {
     }
 
     @PostMapping("/import-json")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     @Operation(
-        summary = "[ADMIN] Import from JSON",
+        summary = "[SYSTEM_ADMIN] Import from JSON",
         description = """
-            Import sender configuration from JSON format (Mulesoft compatible).
+            Import sender configuration from JSON format (Mulesoft compatible) for any email account.
             Creates sender rule and all attachment processing rules in one operation.
             
             Example JSON:

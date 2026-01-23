@@ -12,7 +12,6 @@ import com.atina.invoice.api.model.Tenant;
 import com.atina.invoice.api.repository.EmailAccountRepository;
 import com.atina.invoice.api.repository.EmailSenderRuleRepository;
 import com.atina.invoice.api.repository.TenantRepository;
-import com.atina.invoice.api.security.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -35,52 +34,58 @@ public class EmailSenderRuleService {
     private final EmailSenderRuleMapper senderRuleMapper;
 
     /**
-     * Listar todas las reglas del tenant actual
+     * Listar todas las reglas de todos los tenants (solo para SYSTEM_ADMIN)
      */
     @Transactional(readOnly = true)
     public List<EmailSenderRuleResponse> getAllRules() {
-        Long tenantId = TenantContext.getTenantId();
-        return senderRuleRepository.findByTenantId(tenantId).stream()
+        return senderRuleRepository.findAll().stream()
                 .map(senderRuleMapper::toResponse)
                 .collect(Collectors.toList());
     }
 
     /**
-     * Obtener regla por ID
+     * Obtener regla por ID (sin validar tenant - solo para SYSTEM_ADMIN)
      */
     @Transactional(readOnly = true)
     public EmailSenderRuleResponse getRuleById(Long id) {
-        EmailSenderRule rule = findRuleByIdAndTenant(id);
+        EmailSenderRule rule = senderRuleRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Sender rule not found: " + id));
         return senderRuleMapper.toResponse(rule);
     }
 
     /**
-     * Crear nueva regla de sender
+     * Crear nueva regla de sender (sin validar tenant - solo para SYSTEM_ADMIN)
      */
     @Transactional
     public EmailSenderRuleResponse createRule(CreateEmailSenderRuleRequest request) {
-        Long tenantId = TenantContext.getTenantId();
-        Tenant tenant = tenantRepository.findById(tenantId)
-                .orElseThrow(() -> new RuntimeException("Tenant not found: " + tenantId));
 
-        // Validar que la email account existe y pertenece al tenant
+        // ------------------------------------------------------------
+        // Validar que la email account existe
+        // ------------------------------------------------------------
+
         EmailAccount emailAccount = emailAccountRepository.findById(request.getEmailAccountId())
                 .orElseThrow(() -> new RuntimeException("Email account not found: " + request.getEmailAccountId()));
 
-        if (!emailAccount.getTenant().getId().equals(tenantId)) {
-            throw new RuntimeException("Email account does not belong to current tenant");
-        }
 
+        // ----------------------------------------------------------------
         // Validar que no exista una regla para ese sender en esa cuenta
+        // ----------------------------------------------------------------
+
         if (senderRuleRepository.existsByEmailAccountIdAndSenderEmail(
                 request.getEmailAccountId(), request.getSenderEmail())) {
             throw new RuntimeException("Sender rule already exists for: " + request.getSenderEmail());
         }
 
+        // ----------------------------------------------------------------
         // Crear entidad
-        EmailSenderRule rule = senderRuleMapper.toEntity(request, tenant, emailAccount);
+        // ----------------------------------------------------------------
 
+        EmailSenderRule rule = senderRuleMapper.toEntity(request, emailAccount.getTenant(), emailAccount);
+
+        // ----------------------------------------------------------------
         // Guardar
+        // ----------------------------------------------------------------
+
         EmailSenderRule saved = senderRuleRepository.save(rule);
         log.info("Created sender rule for: {} in account: {}", 
                 saved.getSenderEmail(), emailAccount.getEmailAddress());
@@ -89,11 +94,12 @@ public class EmailSenderRuleService {
     }
 
     /**
-     * Actualizar regla de sender
+     * Actualizar regla de sender (sin validar tenant - solo para SYSTEM_ADMIN)
      */
     @Transactional
     public EmailSenderRuleResponse updateRule(Long id, UpdateEmailSenderRuleRequest request) {
-        EmailSenderRule rule = findRuleByIdAndTenant(id);
+        EmailSenderRule rule = senderRuleRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Sender rule not found: " + id));
 
         // Si se actualiza el sender email, validar que no exista
         if (request.getSenderEmail() != null && 
@@ -115,31 +121,27 @@ public class EmailSenderRuleService {
     }
 
     /**
-     * Eliminar regla de sender
+     * Eliminar regla de sender (sin validar tenant - solo para SYSTEM_ADMIN)
      */
     @Transactional
     public void deleteRule(Long id) {
-        EmailSenderRule rule = findRuleByIdAndTenant(id);
+        EmailSenderRule rule = senderRuleRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Sender rule not found: " + id));
         senderRuleRepository.delete(rule);
         log.info("Deleted sender rule: {}", rule.getSenderEmail());
     }
 
     /**
-     * Importar configuración JSON (formato Mulesoft)
+     * Importar configuración JSON (formato Mulesoft) (sin validar tenant - solo para SYSTEM_ADMIN)
      */
     @Transactional
     public EmailSenderRuleResponse importFromJson(Long emailAccountId, ImportSenderConfigRequest config) {
-        Long tenantId = TenantContext.getTenantId();
-        Tenant tenant = tenantRepository.findById(tenantId)
-                .orElseThrow(() -> new RuntimeException("Tenant not found: " + tenantId));
-
         // Validar email account
         EmailAccount emailAccount = emailAccountRepository.findById(emailAccountId)
                 .orElseThrow(() -> new RuntimeException("Email account not found: " + emailAccountId));
 
-        if (!emailAccount.getTenant().getId().equals(tenantId)) {
-            throw new RuntimeException("Email account does not belong to current tenant");
-        }
+        // Obtener tenant del email account
+        Tenant tenant = emailAccount.getTenant();
 
         // Verificar si ya existe una regla para este sender
         boolean exists = senderRuleRepository.existsByEmailAccountIdAndSenderEmail(
@@ -184,20 +186,5 @@ public class EmailSenderRuleService {
                 saved.getSenderEmail(), saved.getAttachmentRules().size());
 
         return senderRuleMapper.toResponse(saved);
-    }
-
-    /**
-     * Helper: Buscar regla por ID y validar que pertenece al tenant actual
-     */
-    private EmailSenderRule findRuleByIdAndTenant(Long id) {
-        Long tenantId = TenantContext.getTenantId();
-        EmailSenderRule rule = senderRuleRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Sender rule not found: " + id));
-
-        if (!rule.getTenant().getId().equals(tenantId)) {
-            throw new RuntimeException("Sender rule does not belong to current tenant");
-        }
-
-        return rule;
     }
 }

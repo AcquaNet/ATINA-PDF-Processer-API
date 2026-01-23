@@ -2,6 +2,7 @@ package com.atina.invoice.api.service;
 
 import com.atina.invoice.api.model.AttachmentProcessingRule;
 import com.atina.invoice.api.model.EmailSenderRule;
+import com.atina.invoice.api.model.ProcessedAttachment;
 import com.atina.invoice.api.model.ProcessedEmail;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import lombok.RequiredArgsConstructor;
@@ -36,24 +37,30 @@ public class EmailProcessingHelpers {
             try {
                 Pattern pattern = Pattern.compile(rule.getFileNameRegex());
                 if (pattern.matcher(filename).matches()) {
-                    log.debug("File '{}' matched rule #{}: {}", 
+                    log.debug("File '{}' matched rule #{}: {}",
                             filename, rule.getRuleOrder(), rule.getFileNameRegex());
                     return Optional.of(rule);
                 }
             } catch (Exception e) {
-                log.error("Error compiling regex for rule {}: {}", 
+                log.error("Error compiling regex for rule {}: {}",
                         rule.getId(), e.getMessage());
             }
         }
 
-        log.info("No rule matched for file: {}", filename);
+        log.debug("No rule matched for file: {}", filename);
         return Optional.empty();
     }
 
     /**
-     * Generar metadata JSON del email
+     * ⭐ NUEVO: Generar metadata con lista de attachments proporcionada
+     *
+     * Este método es más eficiente porque no depende de lazy loading.
+     * Recibe los attachments ya guardados y genera la metadata directamente.
      */
-    public Map<String, Object> generateMetadata(ProcessedEmail processedEmail) {
+    public Map<String, Object> generateMetadataFromAttachments(
+            ProcessedEmail processedEmail,
+            List<ProcessedAttachment> attachments) {
+
         Map<String, Object> metadata = new LinkedHashMap<>();
 
         // Email info
@@ -83,12 +90,12 @@ public class EmailProcessingHelpers {
 
         // Attachments info
         metadata.put("total_attachments", processedEmail.getTotalAttachments());
-        metadata.put("processed_attachments", processedEmail.getProcessedAttachments());
+        metadata.put("processed_attachments", attachments.size());
 
-        // Attachments details
+        // ⭐ Attachments details (usando lista proporcionada)
         List<Map<String, Object>> attachmentsList = new ArrayList<>();
-        for (int i = 0; i < processedEmail.getAttachments().size(); i++) {
-            var attachment = processedEmail.getAttachments().get(i);
+        for (int i = 0; i < attachments.size(); i++) {
+            ProcessedAttachment attachment = attachments.get(i);
 
             Map<String, Object> attachmentInfo = new LinkedHashMap<>();
             attachmentInfo.put("sequence", i + 1);
@@ -120,6 +127,17 @@ public class EmailProcessingHelpers {
         metadata.put("error_message", processedEmail.getErrorMessage());
 
         return metadata;
+    }
+
+    /**
+     * Generar metadata JSON del email (versión original con lazy loading)
+     *
+     * @deprecated Usar generateMetadataFromAttachments() para mejor performance
+     */
+    @Deprecated
+    public Map<String, Object> generateMetadata(ProcessedEmail processedEmail) {
+        // Delegar al nuevo método usando la colección del email
+        return generateMetadataFromAttachments(processedEmail, processedEmail.getAttachments());
     }
 
     /**

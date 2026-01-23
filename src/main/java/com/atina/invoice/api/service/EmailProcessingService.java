@@ -354,17 +354,13 @@ public class EmailProcessingService {
 
         try {
             // 5. Procesar attachments
-            int processedCount = processAttachments(
+            List<ProcessedAttachment> savedAttachments = processAttachments(
                     processedEmail, senderRule, emailMessage.attachments);
 
-            // ⭐ CRITICAL: Recargar email con attachments desde DB
-            // Usar findByIdWithAttachments() que hace JOIN FETCH
-            // Sin esto, getAttachments() retorna lista vacía (lazy loading)
-            processedEmail = processedEmailRepository.findByIdWithAttachments(processedEmail.getId())
-                    .orElseThrow(() -> new RuntimeException("Email not found after processing"));
-
-            // 6. Generar metadata JSON (ahora con attachments cargados ✅)
-            Map<String, Object> metadata = helpers.generateMetadata(processedEmail);
+            // 6. Generar metadata JSON directamente con los attachments procesados
+            // No necesitamos recargar desde DB, ya tenemos los objetos
+            Map<String, Object> metadata = helpers.generateMetadataFromAttachments(
+                    processedEmail, savedAttachments);
             String metadataJson = objectMapper.writerWithDefaultPrettyPrinter()
                     .writeValueAsString(metadata);
 
@@ -378,14 +374,14 @@ public class EmailProcessingService {
             );
 
             // 8. Actualizar email procesado
-            processedEmail.setProcessedAttachments(processedCount);
+            processedEmail.setProcessedAttachments(savedAttachments.size());
             processedEmail.setMetadataFilePath(metadataPath);
             processedEmail.setRawMetadata("metadata");
             processedEmail.markAsCompleted();
             processedEmailRepository.save(processedEmail);
 
             log.info("✅ Email {} processed: {} attachments",
-                    emailMessage.uid, processedCount);
+                    emailMessage.uid, savedAttachments.size());
 
             return true; // Procesado exitosamente
 
@@ -399,13 +395,15 @@ public class EmailProcessingService {
 
     /**
      * Procesar attachments del email
+     *
+     * @return Lista de attachments procesados exitosamente
      */
-    private int processAttachments(
+    private List<ProcessedAttachment> processAttachments(
             ProcessedEmail processedEmail,
             EmailSenderRule senderRule,
             List<EmailReaderService.AttachmentInfo> attachments) {
 
-        int processedCount = 0;
+        List<ProcessedAttachment> savedAttachments = new java.util.ArrayList<>();
         int sequence = 1;
 
         log.debug("📎 Processing {} attachments", attachments.size());
@@ -425,6 +423,7 @@ public class EmailProcessingService {
                     log.debug("⏭️ No rule matched for: {}", attachmentInfo.filename);
                     attachment.markAsIgnored();
                     processedAttachmentRepository.save(attachment);
+                    // No agregar a savedAttachments (fue ignorado)
                     continue;
                 }
 
@@ -450,9 +449,10 @@ public class EmailProcessingService {
                     // 5. Actualizar attachment
                     attachment.setNormalizedFilename(normalizedFilename);
                     attachment.markAsDownloaded(filePath, fileSize);
-                    processedAttachmentRepository.save(attachment);
+                    attachment = processedAttachmentRepository.save(attachment);
 
-                    processedCount++;
+                    // Agregar a lista de procesados exitosamente
+                    savedAttachments.add(attachment);
                     sequence++;
 
                     log.info("✅ Saved: {} → {}", attachmentInfo.filename, normalizedFilename);
@@ -461,6 +461,7 @@ public class EmailProcessingService {
                     log.error("❌ Error saving {}: {}", attachmentInfo.filename, e.getMessage());
                     attachment.markAsFailed(e.getMessage());
                     processedAttachmentRepository.save(attachment);
+                    // No agregar a savedAttachments (falló)
                 }
 
             } catch (Exception e) {
@@ -468,7 +469,7 @@ public class EmailProcessingService {
             }
         }
 
-        return processedCount;
+        return savedAttachments;
     }
 
     /**

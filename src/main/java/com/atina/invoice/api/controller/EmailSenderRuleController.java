@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -38,8 +39,10 @@ public class EmailSenderRuleController {
         description = "Get all sender rules from all tenants"
     )
     public ResponseEntity<ApiResponse<List<EmailSenderRuleResponse>>> getAllRules() {
+        long start = System.currentTimeMillis();
         List<EmailSenderRuleResponse> rules = senderRuleService.getAllRules();
-        return ResponseEntity.ok(ApiResponse.success(rules));
+        long duration = System.currentTimeMillis() - start;
+        return ResponseEntity.ok(ApiResponse.success(rules, MDC.get("correlationId"), duration));
     }
 
     @GetMapping("/{id}")
@@ -50,8 +53,10 @@ public class EmailSenderRuleController {
     )
     public ResponseEntity<ApiResponse<EmailSenderRuleResponse>> getRuleById(
             @Parameter(description = "Sender rule ID") @PathVariable Long id) {
+        long start = System.currentTimeMillis();
         EmailSenderRuleResponse rule = senderRuleService.getRuleById(id);
-        return ResponseEntity.ok(ApiResponse.success(rule));
+        long duration = System.currentTimeMillis() - start;
+        return ResponseEntity.ok(ApiResponse.success(rule, MDC.get("correlationId"), duration));
     }
 
     @PostMapping
@@ -62,8 +67,10 @@ public class EmailSenderRuleController {
     )
     public ResponseEntity<ApiResponse<EmailSenderRuleResponse>> createRule(
             @Valid @RequestBody CreateEmailSenderRuleRequest request) {
+        long start = System.currentTimeMillis();
         EmailSenderRuleResponse created = senderRuleService.createRule(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(created));
+        long duration = System.currentTimeMillis() - start;
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(created, MDC.get("correlationId"), duration));
     }
 
     @PutMapping("/{id}")
@@ -75,8 +82,10 @@ public class EmailSenderRuleController {
     public ResponseEntity<ApiResponse<EmailSenderRuleResponse>> updateRule(
             @Parameter(description = "Sender rule ID") @PathVariable Long id,
             @Valid @RequestBody UpdateEmailSenderRuleRequest request) {
+        long start = System.currentTimeMillis();
         EmailSenderRuleResponse updated = senderRuleService.updateRule(id, request);
-        return ResponseEntity.ok(ApiResponse.success(updated));
+        long duration = System.currentTimeMillis() - start;
+        return ResponseEntity.ok(ApiResponse.success(updated, MDC.get("correlationId"), duration));
     }
 
     @DeleteMapping("/{id}")
@@ -87,42 +96,10 @@ public class EmailSenderRuleController {
     )
     public ResponseEntity<ApiResponse<Void>> deleteRule(
             @Parameter(description = "Sender rule ID") @PathVariable Long id) {
+        long start = System.currentTimeMillis();
         senderRuleService.deleteRule(id);
-        return ResponseEntity.ok(ApiResponse.success(null));
+        long duration = System.currentTimeMillis() - start;
+        return ResponseEntity.ok(ApiResponse.success(null, MDC.get("correlationId"), duration));
     }
 
-    @PostMapping("/import-json")
-    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
-    @Operation(
-        summary = "[SYSTEM_ADMIN] Import from JSON",
-        description = """
-            Import sender configuration from JSON format (Mulesoft compatible) for any email account.
-            Creates sender rule and all attachment processing rules in one operation.
-            
-            Example JSON:
-            {
-              "email": "sender@example.com",
-              "id": "92455890",
-              "templates": {
-                "email-received": "reply-mail-received.html",
-                "email-processed": "reply-mail-processed.html"
-              },
-              "rules": [
-                {
-                  "id": 1,
-                  "fileRule": "^Invoice+([0-9])+(.PDF|.pdf)$",
-                  "source": "invoice",
-                  "destination": "jde",
-                  "metodo": ""
-                }
-              ]
-            }
-            """
-    )
-    public ResponseEntity<ApiResponse<EmailSenderRuleResponse>> importFromJson(
-            @Parameter(description = "Email account ID") @RequestParam Long emailAccountId,
-            @Valid @RequestBody ImportSenderConfigRequest config) {
-        EmailSenderRuleResponse imported = senderRuleService.importFromJson(emailAccountId, config);
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(imported));
-    }
 }

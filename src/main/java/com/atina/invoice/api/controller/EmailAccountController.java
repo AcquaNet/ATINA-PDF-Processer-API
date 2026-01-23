@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -38,8 +39,14 @@ public class EmailAccountController {
         description = "Get all email accounts from all tenants"
     )
     public ResponseEntity<ApiResponse<List<EmailAccountResponse>>> getAllAccounts() {
+
+        long start = System.currentTimeMillis();
+
         List<EmailAccountResponse> accounts = emailAccountService.getAllAccounts();
-        return ResponseEntity.ok(ApiResponse.success(accounts));
+
+        long duration = System.currentTimeMillis() - start;
+
+        return ResponseEntity.ok(ApiResponse.success(accounts, MDC.get("correlationId"), duration));
     }
 
     @GetMapping("/by-tenant")
@@ -49,8 +56,14 @@ public class EmailAccountController {
         description = "Get all email accounts grouped by tenant with summary information"
     )
     public ResponseEntity<ApiResponse<List<EmailAccountsByTenantResponse>>> getAccountsByTenant() {
+
+        long start = System.currentTimeMillis();
+
         List<EmailAccountsByTenantResponse> accountsByTenant = emailAccountService.getAccountsByTenant();
-        return ResponseEntity.ok(ApiResponse.success(accountsByTenant));
+
+        long duration = System.currentTimeMillis() - start;
+
+        return ResponseEntity.ok(ApiResponse.success(accountsByTenant, MDC.get("correlationId"), duration));
     }
 
     @GetMapping("/{id}")
@@ -61,8 +74,15 @@ public class EmailAccountController {
     )
     public ResponseEntity<ApiResponse<EmailAccountResponse>> getAccountById(
             @Parameter(description = "Email account ID") @PathVariable Long id) {
+
+        long start = System.currentTimeMillis();
+
         EmailAccountResponse account = emailAccountService.getAccountById(id);
-        return ResponseEntity.ok(ApiResponse.success(account));
+
+        long duration = System.currentTimeMillis() - start;
+
+        return ResponseEntity.ok(ApiResponse.success(account, MDC.get("correlationId"), duration));
+
     }
 
     @PostMapping
@@ -73,8 +93,14 @@ public class EmailAccountController {
     )
     public ResponseEntity<ApiResponse<EmailAccountResponse>> createAccount(
             @Valid @RequestBody CreateEmailAccountRequest request) {
+
+        long start = System.currentTimeMillis();
+
         EmailAccountResponse created = emailAccountService.createAccount(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(created));
+
+        long duration = System.currentTimeMillis() - start;
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(created, MDC.get("correlationId"), duration));
     }
 
     @PutMapping("/{id}")
@@ -86,8 +112,14 @@ public class EmailAccountController {
     public ResponseEntity<ApiResponse<EmailAccountResponse>> updateAccount(
             @Parameter(description = "Email account ID") @PathVariable Long id,
             @Valid @RequestBody UpdateEmailAccountRequest request) {
+
+        long start = System.currentTimeMillis();
+
         EmailAccountResponse updated = emailAccountService.updateAccount(id, request);
-        return ResponseEntity.ok(ApiResponse.success(updated));
+
+        long duration = System.currentTimeMillis() - start;
+
+        return ResponseEntity.ok(ApiResponse.success(updated, MDC.get("correlationId"), duration));
     }
 
     @DeleteMapping("/{id}")
@@ -98,8 +130,10 @@ public class EmailAccountController {
     )
     public ResponseEntity<ApiResponse<Void>> deleteAccount(
             @Parameter(description = "Email account ID") @PathVariable Long id) {
+        long start = System.currentTimeMillis();
         emailAccountService.deleteAccount(id);
-        return ResponseEntity.ok(ApiResponse.success(null));
+        long duration = System.currentTimeMillis() - start;
+        return ResponseEntity.ok(ApiResponse.success(null, MDC.get("correlationId"), duration));
     }
 
     @PatchMapping("/{id}/toggle-polling")
@@ -111,8 +145,10 @@ public class EmailAccountController {
     public ResponseEntity<ApiResponse<EmailAccountResponse>> togglePolling(
             @Parameter(description = "Email account ID") @PathVariable Long id,
             @Parameter(description = "Enable polling") @RequestParam boolean enabled) {
+        long start = System.currentTimeMillis();
         EmailAccountResponse updated = emailAccountService.togglePolling(id, enabled);
-        return ResponseEntity.ok(ApiResponse.success(updated));
+        long duration = System.currentTimeMillis() - start;
+        return ResponseEntity.ok(ApiResponse.success(updated, MDC.get("correlationId"), duration));
     }
 
     @PostMapping("/{id}/test-connection")
@@ -123,7 +159,9 @@ public class EmailAccountController {
     )
     public ResponseEntity<ApiResponse<String>> testConnection(
             @Parameter(description = "Email account ID") @PathVariable Long id) {
+        long start = System.currentTimeMillis();
         String result = emailAccountService.testConnection(id);
-        return ResponseEntity.ok(ApiResponse.success(result));
+        long duration = System.currentTimeMillis() - start;
+        return ResponseEntity.ok(ApiResponse.success(result, MDC.get("correlationId"), duration));
     }
 }

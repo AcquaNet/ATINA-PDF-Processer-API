@@ -32,6 +32,7 @@ public class EmailAccountService {
     private final TenantRepository tenantRepository;
     private final EmailAccountMapper emailAccountMapper;
     private final AesGcmCrypto aesGcmCrypto;
+    private final EmailReaderService emailReaderService;
 
     /**
      * Listar todas las cuentas de todos los tenants (solo para SYSTEM_ADMIN)
@@ -140,64 +141,29 @@ public class EmailAccountService {
      * Probar conexión a la cuenta de email (sin validar tenant - solo para SYSTEM_ADMIN)
      */
     public String testConnection(Long id) {
-        EmailAccount account = emailAccountRepository.findById(id)
+
+        // ----------------------------------------------------------------
+        // Read Email Account
+        // ----------------------------------------------------------------
+
+        EmailAccount emailAccount = emailAccountRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Email account not found: " + id));
         
         try {
-            // Desencriptar contraseña
-            String password = account.getPassword(); // Aquí deberías desencriptarla si es necesario
-            
-            // Configurar propiedades según el tipo
-            Properties props = new Properties();
-            Session session;
-            Store store;
 
-            if (account.getEmailType() == EmailType.IMAP) {
-                props.put("mail.store.protocol", "imap");
-                props.put("mail.imap.host", account.getHost());
-                props.put("mail.imap.port", account.getPort());
-                if (account.getUseSsl()) {
-                    props.put("mail.imap.ssl.enable", "true");
-                }
-                props.put("mail.imap.connectiontimeout", "10000");
-                props.put("mail.imap.timeout", "10000");
-                
-                session = Session.getInstance(props);
-                store = session.getStore("imap");
-            } else {
-                props.put("mail.store.protocol", "pop3");
-                props.put("mail.pop3.host", account.getHost());
-                props.put("mail.pop3.port", account.getPort());
-                if (account.getUseSsl()) {
-                    props.put("mail.pop3.ssl.enable", "true");
-                }
-                props.put("mail.pop3.connectiontimeout", "10000");
-                props.put("mail.pop3.timeout", "10000");
-                
-                session = Session.getInstance(props);
-                store = session.getStore("pop3");
-            }
+            EmailReaderService.EmailReadContext context =
+                    emailReaderService.openEmailFolder(emailAccount, false,true);
 
-            // Intentar conectar
-            store.connect(account.getUsername(), password);
-            
-            // Abrir carpeta para verificar acceso
-            Folder folder = store.getFolder(account.getFolderName());
-            folder.open(Folder.READ_ONLY);
-            int messageCount = folder.getMessageCount();
-            
-            // Cerrar conexiones
-            folder.close(false);
-            store.close();
+            int messageCount = context.getFolder().getMessageCount();
 
             log.info("Connection test successful for {}: {} messages in {}", 
-                    account.getEmailAddress(), messageCount, account.getFolderName());
+                    emailAccount.getEmailAddress(), messageCount, emailAccount.getFolderName());
 
             return String.format("Connection successful! Found %d messages in folder '%s'", 
-                    messageCount, account.getFolderName());
+                    messageCount, emailAccount.getFolderName());
 
         } catch (MessagingException e) {
-            log.error("Connection test failed for {}: {}", account.getEmailAddress(), e.getMessage());
+            log.error("Connection test failed for {}: {}", emailAccount.getEmailAddress(), e.getMessage());
             throw new RuntimeException("Connection failed: " + e.getMessage(), e);
         }
     }

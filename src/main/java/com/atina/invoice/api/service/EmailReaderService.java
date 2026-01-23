@@ -131,7 +131,7 @@ public class EmailReaderService {
     public List<EmailMessage> readNewEmails(EmailAccount emailAccount, boolean markAsRead) {
         List<EmailMessage> emails = new ArrayList<>();
 
-        try (EmailReadContext context = openEmailFolder(emailAccount, markAsRead)) {
+        try (EmailReadContext context = openEmailFolder(emailAccount, markAsRead,true)) {
 
             // Obtener mensajes
             Message[] messages = context.folder.getMessages();
@@ -182,7 +182,7 @@ public class EmailReaderService {
      * @param readWrite Si debe abrir en modo READ_WRITE (para marcar como leído)
      * @return Contexto de lectura
      */
-    public EmailReadContext openEmailFolder(EmailAccount emailAccount, boolean readWrite)
+    public EmailReadContext openEmailFolder(EmailAccount emailAccount, boolean readWrite, boolean closeConnection)
             throws MessagingException {
 
         Properties props = new Properties();
@@ -249,6 +249,12 @@ public class EmailReaderService {
                 emailAccount.getFolderName(),
                 readWrite ? "READ_WRITE" : "READ_ONLY",
                 folder.getMessageCount());
+
+        if(closeConnection)
+        {
+            folder.close(false);
+            store.close();
+        }
 
         return new EmailReadContext(store, folder, readWrite);
     }

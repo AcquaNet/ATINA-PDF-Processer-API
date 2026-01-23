@@ -1,5 +1,6 @@
 package com.atina.invoice.api.model;
 
+import com.atina.invoice.api.model.enums.StorageType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -66,6 +67,29 @@ public class Tenant {
      */
     @Column(length = 50)
     private String subscriptionTier;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "storage_type")
+    private StorageType storageType = StorageType.LOCAL;
+
+    @Column(name = "storage_base_path")
+    private String storageBasePath = "/private/tmp/process-mails";
+
+    @Column(name = "template_base_path")
+    private String templateBasePath = "/config/templates";
+
+    // Campos S3 (opcionales)
+    @Column(name = "s3_bucket_name")
+    private String s3BucketName;
+
+    @Column(name = "s3_region")
+    private String s3Region;
+
+    @Column(name = "s3_access_key")
+    private String s3AccessKey;
+
+    @Column(name = "s3_secret_key")
+    private String s3SecretKey;
 
     /**
      * Created timestamp

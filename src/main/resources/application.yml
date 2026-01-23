@@ -67,6 +67,22 @@ spring:
           model: ${ai.openai.model}
           temperature: 1
           max-completion-tokens: 4000
+
+
+  # =====================================================
+  # HIKARICP CONFIGURATION (Para evitar thread starvation)
+  # =====================================================
+  datasource:
+    hikari:
+      maximum-pool-size: 30
+      minimum-idle: 10
+      leak-detection-threshold: 0
+      connection-timeout: 30000
+      initialization-fail-timeout: 1
+      auto-commit: true
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
 # ============================================
 # Server Configuration
 # ============================================
@@ -130,6 +146,8 @@ logging:
     #org.springframework.beans.factory.support: TRACE
     #org.springframework.context: TRACE
 
+    org.springframework: INFO
+    org.springframework.scheduling: INFO
     com.atina.invoice.api: DEBUG
     org.springframework.web: DEBUG
     org.springframework.security: DEBUG
@@ -164,3 +182,22 @@ springdoc:
 mcp:
   enabled: true
 
+# ============================================
+# EMAIL PROCESSING
+# ============================================
+
+email:
+  crypt:
+    # Clave de encriptación para contraseñas
+    key-base64: iRC660hR0ACDBVOhHGaz6klFpK7BlcMqVCefR18Iyz0=
+  polling:
+    # Habilitar/deshabilitar polling automático (scheduler)
+    # Si está en false, el scheduler NO se ejecuta automáticamente
+    # PERO el controller manual SIGUE FUNCIONANDO
+    enabled: true
+    # Intervalo de polling en segundos
+    interval-seconds: 120000
+  # Marcar emails como leídos después de procesarlos
+  # true = marca como leído SOLO los que se procesan exitosamente
+  # false = no marca nada como leído
+  mark-as-read: true

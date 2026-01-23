@@ -6,14 +6,14 @@ import com.atina.invoice.api.model.enums.EmailProcessingStatus;
 import com.atina.invoice.api.model.enums.StorageType;
 import com.atina.invoice.api.repository.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.mail.Flags;
 import jakarta.mail.Part;
+import jakarta.mail.search.FlagTerm;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import jakarta.mail.Flags;
-import jakarta.mail.search.FlagTerm;
 
 import java.io.InputStream;
 import java.util.List;
@@ -57,33 +57,28 @@ public class EmailProcessingService {
      */
     @Transactional
     public int processEmailsFromAccount(EmailAccount emailAccount) {
-
-
-        log.info("    BEGIN PROCESS EMAIL: 🔍 Processing emails from: {}", emailAccount.getEmailAddress());
+        log.info("🔍 Processing emails from: {}", emailAccount.getEmailAddress());
 
         try {
 
             // ----------------------------------------------
-            // Leer emails con opción de marcar como leído
+            // ⭐ MODIFICADO: Leer emails con opción de marcar como leído
             // ----------------------------------------------
 
             try (EmailReaderService.EmailReadContext context =
                          emailReaderService.openEmailFolder(emailAccount, markAsRead)) {
 
-                // -------------------------
                 // Leer emails nuevos
-                // -------------------------
-
                 List<EmailReaderService.EmailMessage> newEmails =
                         readEmailsFromContext(context.getFolder(), emailAccount);
 
                 if (newEmails.isEmpty()) {
-                    log.info("    PROCESS EMAIL: ✓ No new emails in {}", emailAccount.getEmailAddress());
+                    log.info("✓ No new emails in {}", emailAccount.getEmailAddress());
                     updateAccountPollDates(emailAccount, true);
                     return 0;
                 }
 
-                log.info("    PROCESS EMAIL: 📧 Found {} new emails in {}", newEmails.size(), emailAccount.getEmailAddress());
+                log.info("📧 Found {} new emails in {}", newEmails.size(), emailAccount.getEmailAddress());
 
                 // ----------------------------------------------
                 // Procesar cada email
@@ -94,54 +89,34 @@ public class EmailProcessingService {
 
                 for (EmailReaderService.EmailMessage emailMessage : newEmails) {
                     try {
-
-                        // --------------------------------
                         // Verificar si ya fue procesado
-                        // --------------------------------
-
                         if (processedEmailRepository.existsByEmailAccountIdAndEmailUid(
                                 emailAccount.getId(), emailMessage.uid)) {
-
                             log.debug("⏭️ Email {} already processed, skipping", emailMessage.uid);
                             continue;
-
                         }
 
-                        // --------------------------------
                         // Procesar email individual
-                        // --------------------------------
-
                         boolean success = processEmail(emailAccount, emailMessage);
 
                         if (success) {
-
                             processedCount++;
                             lastProcessedUid = emailMessage.uid;
 
-                            // ---------------------------------------------------
-                            // Marcar como leído SOLO si se procesó exitosamente
-                            // ---------------------------------------------------
-
+                            // ⭐ NUEVO: Marcar como leído SOLO si se procesó exitosamente
                             if (markAsRead) {
-
                                 try {
-
                                     context.markAsRead(emailMessage);
-
                                 } catch (Exception e) {
-
-                                    log.warn("    PROCESS EMAIL:⚠️  Could not mark email {} as read: {}",
+                                    log.warn("⚠️  Could not mark email {} as read: {}",
                                             emailMessage.uid, e.getMessage());
-
                                 }
                             }
                         }
 
                     } catch (Exception e) {
-
-                        log.error("    PROCESS EMAIL:❌ Error processing email {}: {}",
+                        log.error("❌ Error processing email {}: {}",
                                 emailMessage.uid, e.getMessage(), e);
-
                     }
                 }
 
@@ -149,7 +124,7 @@ public class EmailProcessingService {
                 emailAccount.setLastProcessedUid(lastProcessedUid);
                 updateAccountPollDates(emailAccount, true);
 
-                log.info("    PROCESS EMAIL: ✅ Successfully processed {} emails from {}",
+                log.info("✅ Successfully processed {} emails from {}",
                         processedCount, emailAccount.getEmailAddress());
 
                 return processedCount;
@@ -157,18 +132,18 @@ public class EmailProcessingService {
             } // AutoCloseable cierra la conexión aquí
 
         } catch (Exception e) {
-
-            log.error("    PROCESS EMAIL:❌ Error processing emails from {}: {}",
+            log.error("❌ Error processing emails from {}: {}",
                     emailAccount.getEmailAddress(), e.getMessage(), e);
-
             updateAccountPollDates(emailAccount, false);
-
             return 0;
         }
     }
 
     /**
-     * Leer emails desde un folder
+     * Leer emails NO LEÍDOS desde un folder
+     *
+     * ⭐ OPTIMIZADO: Usa folder.search(UNSEEN) en lugar de getMessages()
+     * Esto significa que solo lee los emails nuevos, no toda la casilla
      */
     private List<EmailReaderService.EmailMessage> readEmailsFromContext(
             jakarta.mail.Folder folder,
@@ -198,11 +173,7 @@ public class EmailProcessingService {
 
         for (jakarta.mail.Message message : messages) {
             try {
-
-                // ----------------------------------------
                 // Obtener UID del mensaje
-                // ----------------------------------------
-
                 String uid = getMessageUid(folder, message);
 
                 // ⭐ NOTA: Ya no necesitamos filtrar por lastProcessedUid
@@ -231,10 +202,10 @@ public class EmailProcessingService {
                     }
                 }
 
-                // To, CC, BCC - simplificado
-                email.toAddresses = new java.util.ArrayList<>();
-                email.ccAddresses = new java.util.ArrayList<>();
-                email.bccAddresses = new java.util.ArrayList<>();
+                // ⭐ To, CC, BCC - Parsear correctamente
+                email.toAddresses = parseAddresses(message.getRecipients(jakarta.mail.Message.RecipientType.TO));
+                email.ccAddresses = parseAddresses(message.getRecipients(jakarta.mail.Message.RecipientType.CC));
+                email.bccAddresses = parseAddresses(message.getRecipients(jakarta.mail.Message.RecipientType.BCC));
 
                 // Dates
                 java.util.Date sentDate = message.getSentDate();
@@ -318,6 +289,28 @@ public class EmailProcessingService {
     }
 
     /**
+     * Parsear addresses (To, CC, BCC) a lista de strings
+     */
+    private List<String> parseAddresses(jakarta.mail.Address[] addresses) {
+        List<String> result = new java.util.ArrayList<>();
+
+        if (addresses == null || addresses.length == 0) {
+            return result;
+        }
+
+        for (jakarta.mail.Address address : addresses) {
+            if (address instanceof jakarta.mail.internet.InternetAddress) {
+                jakarta.mail.internet.InternetAddress ia = (jakarta.mail.internet.InternetAddress) address;
+                result.add(ia.getAddress());
+            } else {
+                result.add(address.toString());
+            }
+        }
+
+        return result;
+    }
+
+    /**
      * Procesar un email individual
      *
      * @return true si se procesó exitosamente
@@ -329,27 +322,17 @@ public class EmailProcessingService {
         log.debug("📨 Processing email from {}: {}",
                 emailMessage.fromAddress, emailMessage.subject);
 
-
-        // ----------------------------------------
         // 1. Buscar regla de sender
-        // ----------------------------------------
-
         Optional<EmailSenderRule> senderRuleOpt = senderRuleRepository
                 .findByEmailAccountIdAndSenderEmail(
                         emailAccount.getId(),
                         emailMessage.fromAddress);
 
-        // ----------------------------------------
         // 2. Crear registro de email procesado
-        // ----------------------------------------
-
         ProcessedEmail processedEmail = buildProcessedEmail(
                 emailAccount, emailMessage, senderRuleOpt.orElse(null));
 
-        // ----------------------------------------
         // 3. Validar si debe procesarse
-        // ----------------------------------------
-
         if (senderRuleOpt.isEmpty()) {
             log.info("⏭️ No sender rule for {}, marking as IGNORED", emailMessage.fromAddress);
             processedEmail.markAsIgnored();
@@ -366,33 +349,26 @@ public class EmailProcessingService {
             return false; // No se procesó
         }
 
-        // ----------------------------------------
         // 4. Guardar email en DB
-        // ----------------------------------------
-
         processedEmail = processedEmailRepository.save(processedEmail);
 
         try {
-
-            // ----------------------------------------
             // 5. Procesar attachments
-            // ----------------------------------------
-
             int processedCount = processAttachments(
                     processedEmail, senderRule, emailMessage.attachments);
 
-            // ----------------------------------------
-            // 6. Generar metadata JSON
-            // ----------------------------------------
+            // ⭐ CRITICAL: Recargar email con attachments desde DB
+            // Usar findByIdWithAttachments() que hace JOIN FETCH
+            // Sin esto, getAttachments() retorna lista vacía (lazy loading)
+            processedEmail = processedEmailRepository.findByIdWithAttachments(processedEmail.getId())
+                    .orElseThrow(() -> new RuntimeException("Email not found after processing"));
 
+            // 6. Generar metadata JSON (ahora con attachments cargados ✅)
             Map<String, Object> metadata = helpers.generateMetadata(processedEmail);
             String metadataJson = objectMapper.writerWithDefaultPrettyPrinter()
                     .writeValueAsString(metadata);
 
-            // ----------------------------------------
             // 7. Guardar metadata en archivo
-            // ----------------------------------------
-
             String metadataPath = fileStorageService.saveEmailMetadata(
                     emailAccount.getTenant(),
                     senderRule.getSenderId(),
@@ -401,10 +377,7 @@ public class EmailProcessingService {
                     metadataJson
             );
 
-            // ----------------------------------------
             // 8. Actualizar email procesado
-            // ----------------------------------------
-
             processedEmail.setProcessedAttachments(processedCount);
             processedEmail.setMetadataFilePath(metadataPath);
             processedEmail.setRawMetadata("metadata");

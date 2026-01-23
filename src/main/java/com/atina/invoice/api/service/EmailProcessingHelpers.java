@@ -46,7 +46,7 @@ public class EmailProcessingHelpers {
             }
         }
 
-        log.debug("No rule matched for file: {}", filename);
+        log.info("No rule matched for file: {}", filename);
         return Optional.empty();
     }
 
@@ -89,7 +89,7 @@ public class EmailProcessingHelpers {
         List<Map<String, Object>> attachmentsList = new ArrayList<>();
         for (int i = 0; i < processedEmail.getAttachments().size(); i++) {
             var attachment = processedEmail.getAttachments().get(i);
-            
+
             Map<String, Object> attachmentInfo = new LinkedHashMap<>();
             attachmentInfo.put("sequence", i + 1);
             attachmentInfo.put("original_filename", attachment.getOriginalFilename());

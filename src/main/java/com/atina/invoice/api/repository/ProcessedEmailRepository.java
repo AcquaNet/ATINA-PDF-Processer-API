@@ -70,4 +70,17 @@ public interface ProcessedEmailRepository extends JpaRepository<ProcessedEmail, 
     @Query("SELECT e FROM ProcessedEmail e WHERE e.processingStatus = 'PROCESSING' " +
             "OR e.processingStatus = 'PENDING'")
     List<ProcessedEmail> findPendingEmails();
+
+    /**
+     * ⭐ CRITICAL: Buscar email por ID con attachments cargados (EAGER)
+     *
+     * Sin JOIN FETCH, getAttachments() retorna lista vacía debido a lazy loading.
+     * Este método carga los attachments en la misma query.
+     *
+     * Usar este método antes de generar metadata.
+     */
+    @Query("SELECT e FROM ProcessedEmail e " +
+            "LEFT JOIN FETCH e.attachments " +
+            "WHERE e.id = :id")
+    Optional<ProcessedEmail> findByIdWithAttachments(@org.springframework.data.repository.query.Param("id") Long id);
 }

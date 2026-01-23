@@ -62,7 +62,7 @@ public class EmailPollingScheduler {
             // Invocar el servicio compartido para polling
             // -----------------------------------------------
 
-            int totalEmailsProcessed = pollingService.pollAllAccounts();
+             int totalEmailsProcessed = pollingService.pollAllAccounts();
 
             if (totalEmailsProcessed > 0) {
                 log.info("END EMAIL POLLING: ✅ Scheduler: Processed {} emails", totalEmailsProcessed);

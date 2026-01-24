@@ -20,7 +20,8 @@ import java.util.List;
         @Index(name = "idx_email_uid", columnList = "email_account_id,email_uid", unique = true),
         @Index(name = "idx_processing_status", columnList = "processing_status"),
         @Index(name = "idx_from_address", columnList = "from_address"),
-        @Index(name = "idx_processed_date", columnList = "processed_date")
+        @Index(name = "idx_processed_date", columnList = "processed_date"),
+        @Index(name = "idx_correlation_id", columnList = "correlation_id")
 })
 @Data
 @Builder
@@ -54,6 +55,13 @@ public class ProcessedEmail {
     private EmailSenderRule senderRule;
 
     // ========== Metadata del Email ==========
+
+    /**
+     * Correlation ID para tracking en logs
+     * Se genera al momento de procesar el email y se usa para rastrear todo el flujo en logs
+     */
+    @Column(name = "correlation_id", length = 100)
+    private String correlationId;
 
     /**
      * UID único del email en el servidor IMAP/POP3

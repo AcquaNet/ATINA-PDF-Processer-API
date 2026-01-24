@@ -11,6 +11,7 @@ import jakarta.mail.Part;
 import jakarta.mail.search.FlagTerm;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +20,7 @@ import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Servicio principal de procesamiento de emails
@@ -319,77 +321,94 @@ public class EmailProcessingService {
             EmailAccount emailAccount,
             EmailReaderService.EmailMessage emailMessage) {
 
-        log.debug("📨 Processing email from {}: {}",
-                emailMessage.fromAddress, emailMessage.subject);
+        // Generar correlationId único para este email
+        String correlationId = UUID.randomUUID().toString();
 
-        // 1. Buscar regla de sender
-        Optional<EmailSenderRule> senderRuleOpt = senderRuleRepository
-                .findByEmailAccountIdAndSenderEmail(
-                        emailAccount.getId(),
-                        emailMessage.fromAddress);
-
-        // 2. Crear registro de email procesado
-        ProcessedEmail processedEmail = buildProcessedEmail(
-                emailAccount, emailMessage, senderRuleOpt.orElse(null));
-
-        // 3. Validar si debe procesarse
-        if (senderRuleOpt.isEmpty()) {
-            log.info("⏭️ No sender rule for {}, marking as IGNORED", emailMessage.fromAddress);
-            processedEmail.markAsIgnored();
-            processedEmailRepository.save(processedEmail);
-            return false; // No se procesó
-        }
-
-        EmailSenderRule senderRule = senderRuleOpt.get();
-
-        if (!senderRule.getProcessEnabled()) {
-            log.info("⏭️ Processing disabled for {}, marking as IGNORED", emailMessage.fromAddress);
-            processedEmail.markAsIgnored();
-            processedEmailRepository.save(processedEmail);
-            return false; // No se procesó
-        }
-
-        // 4. Guardar email en DB
-        processedEmail = processedEmailRepository.save(processedEmail);
+        // Setear en MDC para que aparezca en todos los logs
+        MDC.put("correlationId", correlationId);
 
         try {
-            // 5. Procesar attachments
-            List<ProcessedAttachment> savedAttachments = processAttachments(
-                    processedEmail, senderRule, emailMessage.attachments);
+            log.info("📨 [START] Processing email from {}: {} [correlationId={}]",
+                    emailMessage.fromAddress, emailMessage.subject, correlationId);
 
-            // 6. Generar metadata JSON directamente con los attachments procesados
-            // No necesitamos recargar desde DB, ya tenemos los objetos
-            Map<String, Object> metadata = helpers.generateMetadataFromAttachments(
-                    processedEmail, savedAttachments);
-            String metadataJson = objectMapper.writerWithDefaultPrettyPrinter()
-                    .writeValueAsString(metadata);
+            // 1. Buscar regla de sender
+            Optional<EmailSenderRule> senderRuleOpt = senderRuleRepository
+                    .findByEmailAccountIdAndSenderEmail(
+                            emailAccount.getId(),
+                            emailMessage.fromAddress);
 
-            // 7. Guardar metadata en archivo
-            String metadataPath = fileStorageService.saveEmailMetadata(
-                    emailAccount.getTenant(),
-                    senderRule.getSenderId(),
-                    processedEmail.getId(),
-                    emailMessage.fromAddress,
-                    metadataJson
-            );
+            // 2. Crear registro de email procesado
+            ProcessedEmail processedEmail = buildProcessedEmail(
+                    emailAccount, emailMessage, senderRuleOpt.orElse(null));
 
-            // 8. Actualizar email procesado
-            processedEmail.setProcessedAttachments(savedAttachments.size());
-            processedEmail.setMetadataFilePath(metadataPath);
-            processedEmail.setRawMetadata("metadata");
-            processedEmail.markAsCompleted();
-            processedEmailRepository.save(processedEmail);
+            // Setear correlationId en el email
+            processedEmail.setCorrelationId(correlationId);
 
-            log.info("✅ Email {} processed: {} attachments",
-                    emailMessage.uid, savedAttachments.size());
+            // 3. Validar si debe procesarse
+            if (senderRuleOpt.isEmpty()) {
+                log.info("⏭️ No sender rule for {}, marking as IGNORED", emailMessage.fromAddress);
+                processedEmail.markAsIgnored();
+                processedEmailRepository.save(processedEmail);
+                log.info("✓ [END] Email processing finished (IGNORED) [correlationId={}]", correlationId);
+                return false; // No se procesó
+            }
 
-            return true; // Procesado exitosamente
+            EmailSenderRule senderRule = senderRuleOpt.get();
 
-        } catch (Exception e) {
-            log.error("❌ Error processing email: {}", e.getMessage(), e);
-            processedEmail.markAsFailed(e.getMessage());
-            processedEmailRepository.save(processedEmail);
-            return false; // Falló el procesamiento
+            if (!senderRule.getProcessEnabled()) {
+                log.info("⏭️ Processing disabled for {}, marking as IGNORED", emailMessage.fromAddress);
+                processedEmail.markAsIgnored();
+                processedEmailRepository.save(processedEmail);
+                log.info("✓ [END] Email processing finished (DISABLED) [correlationId={}]", correlationId);
+                return false; // No se procesó
+            }
+
+            // 4. Guardar email en DB
+            processedEmail = processedEmailRepository.save(processedEmail);
+
+            try {
+                // 5. Procesar attachments
+                List<ProcessedAttachment> savedAttachments = processAttachments(
+                        processedEmail, senderRule, emailMessage.attachments);
+
+                // 6. Generar metadata JSON directamente con los attachments procesados
+                // No necesitamos recargar desde DB, ya tenemos los objetos
+                Map<String, Object> metadata = helpers.generateMetadataFromAttachments(
+                        processedEmail, savedAttachments);
+                String metadataJson = objectMapper.writerWithDefaultPrettyPrinter()
+                        .writeValueAsString(metadata);
+
+                // 7. Guardar metadata en archivo
+                String metadataPath = fileStorageService.saveEmailMetadata(
+                        emailAccount.getTenant(),
+                        senderRule.getSenderId(),
+                        processedEmail.getId(),
+                        emailMessage.fromAddress,
+                        metadataJson
+                );
+
+                // 8. Actualizar email procesado
+                processedEmail.setProcessedAttachments(savedAttachments.size());
+                processedEmail.setMetadataFilePath(metadataPath);
+                processedEmail.setRawMetadata("metadata");
+                processedEmail.markAsCompleted();
+                processedEmailRepository.save(processedEmail);
+
+                log.info("✅ [END] Email {} processed successfully: {} attachments [correlationId={}]",
+                        emailMessage.uid, savedAttachments.size(), correlationId);
+
+                return true; // Procesado exitosamente
+
+            } catch (Exception e) {
+                log.error("❌ [ERROR] Error processing email: {} [correlationId={}]", e.getMessage(), correlationId, e);
+                processedEmail.markAsFailed(e.getMessage());
+                processedEmailRepository.save(processedEmail);
+                return false; // Falló el procesamiento
+            }
+
+        } finally {
+            // Limpiar correlationId del MDC
+            MDC.remove("correlationId");
         }
     }
 

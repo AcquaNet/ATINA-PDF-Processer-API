@@ -3,9 +3,12 @@ package com.atina.invoice.api.scheduler;
 import com.atina.invoice.api.service.EmailPollingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+
+import java.util.UUID;
 
 /**
  * Scheduler para polling automático de emails
@@ -53,23 +56,38 @@ public class EmailPollingScheduler {
     @Scheduled(fixedRate = 60000) // 60 segundos = 1 minuto
     public void pollEmails() {
 
-        log.debug("BEGIN EMAIL POLLING: 🔄 Running email polling scheduler...");
+        // -----------------------------------------------
+        // Generar Correlation ID para esta ejecución
+        // -----------------------------------------------
+        String correlationId = UUID.randomUUID().toString();
+        MDC.put("correlationId", correlationId);
 
         try {
 
+            log.info("🔄 [SCHEDULER-START] Email polling scheduler started [correlationId={}]", correlationId);
 
             // -----------------------------------------------
             // Invocar el servicio compartido para polling
             // -----------------------------------------------
 
-             int totalEmailsProcessed = pollingService.pollAllAccounts();
+            int totalEmailsProcessed = pollingService.pollAllAccounts();
 
             if (totalEmailsProcessed > 0) {
-                log.info("END EMAIL POLLING: ✅ Scheduler: Processed {} emails", totalEmailsProcessed);
+                log.info("✅ [SCHEDULER-END] Scheduler completed: Processed {} emails [correlationId={}]",
+                        totalEmailsProcessed, correlationId);
+            } else {
+                log.info("✅ [SCHEDULER-END] Scheduler completed: No emails processed [correlationId={}]",
+                        correlationId);
             }
 
         } catch (Exception e) {
-            log.error("END EMAIL POLLING: ❌ Error in email polling scheduler: {}", e.getMessage(), e);
+            log.error("❌ [SCHEDULER-ERROR] Error in email polling scheduler [correlationId={}]: {}",
+                    correlationId, e.getMessage(), e);
+        } finally {
+            // -----------------------------------------------
+            // Limpiar MDC al finalizar
+            // -----------------------------------------------
+            MDC.remove("correlationId");
         }
     }
 }

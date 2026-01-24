@@ -321,14 +321,23 @@ public class EmailProcessingService {
             EmailAccount emailAccount,
             EmailReaderService.EmailMessage emailMessage) {
 
-        // Generar correlationId único para este email
-        String correlationId = UUID.randomUUID().toString();
+        // -----------------------------------------------
+        // Obtener correlationId del scheduler (MDC)
+        // Si no existe, generar uno nuevo (backward compatibility)
+        // -----------------------------------------------
+        String correlationId = MDC.get("correlationId");
+        boolean generatedHere = false;
 
-        // Setear en MDC para que aparezca en todos los logs
-        MDC.put("correlationId", correlationId);
+        if (correlationId == null) {
+            // No hay correlationId del scheduler, generar uno nuevo
+            correlationId = UUID.randomUUID().toString();
+            MDC.put("correlationId", correlationId);
+            generatedHere = true;
+            log.debug("Generated new correlationId for email (no scheduler context): {}", correlationId);
+        }
 
         try {
-            log.info("📨 [START] Processing email from {}: {} [correlationId={}]",
+            log.info("📨 [EMAIL-START] Processing email from {}: {} [correlationId={}]",
                     emailMessage.fromAddress, emailMessage.subject, correlationId);
 
             // 1. Buscar regla de sender
@@ -349,7 +358,7 @@ public class EmailProcessingService {
                 log.info("⏭️ No sender rule for {}, marking as IGNORED", emailMessage.fromAddress);
                 processedEmail.markAsIgnored();
                 processedEmailRepository.save(processedEmail);
-                log.info("✓ [END] Email processing finished (IGNORED) [correlationId={}]", correlationId);
+                log.info("✓ [EMAIL-END] Email processing finished (IGNORED) [correlationId={}]", correlationId);
                 return false; // No se procesó
             }
 
@@ -359,7 +368,7 @@ public class EmailProcessingService {
                 log.info("⏭️ Processing disabled for {}, marking as IGNORED", emailMessage.fromAddress);
                 processedEmail.markAsIgnored();
                 processedEmailRepository.save(processedEmail);
-                log.info("✓ [END] Email processing finished (DISABLED) [correlationId={}]", correlationId);
+                log.info("✓ [EMAIL-END] Email processing finished (DISABLED) [correlationId={}]", correlationId);
                 return false; // No se procesó
             }
 
@@ -394,21 +403,26 @@ public class EmailProcessingService {
                 processedEmail.markAsCompleted();
                 processedEmailRepository.save(processedEmail);
 
-                log.info("✅ [END] Email {} processed successfully: {} attachments [correlationId={}]",
+                log.info("✅ [EMAIL-END] Email {} processed successfully: {} attachments [correlationId={}]",
                         emailMessage.uid, savedAttachments.size(), correlationId);
 
                 return true; // Procesado exitosamente
 
             } catch (Exception e) {
-                log.error("❌ [ERROR] Error processing email: {} [correlationId={}]", e.getMessage(), correlationId, e);
+                log.error("❌ [EMAIL-ERROR] Error processing email: {} [correlationId={}]", e.getMessage(), correlationId, e);
                 processedEmail.markAsFailed(e.getMessage());
                 processedEmailRepository.save(processedEmail);
                 return false; // Falló el procesamiento
             }
 
         } finally {
-            // Limpiar correlationId del MDC
-            MDC.remove("correlationId");
+            // -----------------------------------------------
+            // Limpiar correlationId del MDC solo si lo generamos aquí
+            // Si vino del scheduler, NO lo removemos para que se use en otros emails
+            // -----------------------------------------------
+            if (generatedHere) {
+                MDC.remove("correlationId");
+            }
         }
     }
 

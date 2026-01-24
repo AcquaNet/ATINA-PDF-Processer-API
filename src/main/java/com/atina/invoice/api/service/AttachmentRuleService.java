@@ -210,13 +210,9 @@ public class AttachmentRuleService {
      * Helper: Buscar sender rule y validar tenant
      */
     private EmailSenderRule findSenderRuleByIdAndTenant(Long senderRuleId) {
-        Long tenantId = TenantContext.getTenantId();
+
         EmailSenderRule senderRule = senderRuleRepository.findById(senderRuleId)
                 .orElseThrow(() -> new RuntimeException("Sender rule not found: " + senderRuleId));
-
-        if (!senderRule.getTenant().getId().equals(tenantId)) {
-            throw new RuntimeException("Sender rule does not belong to current tenant");
-        }
 
         return senderRule;
     }

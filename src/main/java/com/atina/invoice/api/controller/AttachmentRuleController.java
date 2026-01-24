@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -39,8 +40,10 @@ public class AttachmentRuleController {
     )
     public ResponseEntity<ApiResponse<List<AttachmentProcessingRuleResponse>>> getRulesBySenderRule(
             @Parameter(description = "Sender rule ID") @PathVariable Long senderRuleId) {
+        long start = System.currentTimeMillis();
         List<AttachmentProcessingRuleResponse> rules = attachmentRuleService.getRulesBySenderRule(senderRuleId);
-        return ResponseEntity.ok(ApiResponse.success(rules));
+        long duration = System.currentTimeMillis() - start;
+        return ResponseEntity.ok(ApiResponse.success(rules, MDC.get("correlationId"), duration));
     }
 
     @GetMapping("/attachment-rules/{id}")
@@ -51,8 +54,10 @@ public class AttachmentRuleController {
     )
     public ResponseEntity<ApiResponse<AttachmentProcessingRuleResponse>> getRuleById(
             @Parameter(description = "Attachment rule ID") @PathVariable Long id) {
+        long start = System.currentTimeMillis();
         AttachmentProcessingRuleResponse rule = attachmentRuleService.getRuleById(id);
-        return ResponseEntity.ok(ApiResponse.success(rule));
+        long duration = System.currentTimeMillis() - start;
+        return ResponseEntity.ok(ApiResponse.success(rule, MDC.get("correlationId"), duration));
     }
 
     @PostMapping("/sender-rules/{senderRuleId}/attachment-rules")
@@ -64,8 +69,10 @@ public class AttachmentRuleController {
     public ResponseEntity<ApiResponse<AttachmentProcessingRuleResponse>> createRule(
             @Parameter(description = "Sender rule ID") @PathVariable Long senderRuleId,
             @Valid @RequestBody CreateAttachmentRuleRequest request) {
+        long start = System.currentTimeMillis();
         AttachmentProcessingRuleResponse created = attachmentRuleService.createRule(senderRuleId, request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(created));
+        long duration = System.currentTimeMillis() - start;
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(created, MDC.get("correlationId"), duration));
     }
 
     @PutMapping("/attachment-rules/{id}")
@@ -77,8 +84,10 @@ public class AttachmentRuleController {
     public ResponseEntity<ApiResponse<AttachmentProcessingRuleResponse>> updateRule(
             @Parameter(description = "Attachment rule ID") @PathVariable Long id,
             @Valid @RequestBody UpdateAttachmentRuleRequest request) {
+        long start = System.currentTimeMillis();
         AttachmentProcessingRuleResponse updated = attachmentRuleService.updateRule(id, request);
-        return ResponseEntity.ok(ApiResponse.success(updated));
+        long duration = System.currentTimeMillis() - start;
+        return ResponseEntity.ok(ApiResponse.success(updated, MDC.get("correlationId"), duration));
     }
 
     @DeleteMapping("/attachment-rules/{id}")
@@ -89,8 +98,10 @@ public class AttachmentRuleController {
     )
     public ResponseEntity<ApiResponse<Void>> deleteRule(
             @Parameter(description = "Attachment rule ID") @PathVariable Long id) {
+        long start = System.currentTimeMillis();
         attachmentRuleService.deleteRule(id);
-        return ResponseEntity.ok(ApiResponse.success(null));
+        long duration = System.currentTimeMillis() - start;
+        return ResponseEntity.ok(ApiResponse.success(null, MDC.get("correlationId"), duration));
     }
 
     @PatchMapping("/attachment-rules/{id}/reorder")
@@ -102,8 +113,10 @@ public class AttachmentRuleController {
     public ResponseEntity<ApiResponse<AttachmentProcessingRuleResponse>> reorderRule(
             @Parameter(description = "Attachment rule ID") @PathVariable Long id,
             @Parameter(description = "New order number") @RequestParam Integer newOrder) {
+        long start = System.currentTimeMillis();
         AttachmentProcessingRuleResponse reordered = attachmentRuleService.reorderRule(id, newOrder);
-        return ResponseEntity.ok(ApiResponse.success(reordered));
+        long duration = System.currentTimeMillis() - start;
+        return ResponseEntity.ok(ApiResponse.success(reordered, MDC.get("correlationId"), duration));
     }
 
     @PostMapping("/attachment-rules/test-regex")
@@ -143,7 +156,9 @@ public class AttachmentRuleController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> testRegex(
             @Parameter(description = "Regex pattern to test") @RequestParam String regex,
             @Parameter(description = "List of filenames to test against") @RequestBody List<String> filenames) {
+        long start = System.currentTimeMillis();
         Map<String, Object> result = attachmentRuleService.testRegex(regex, filenames);
-        return ResponseEntity.ok(ApiResponse.success(result));
+        long duration = System.currentTimeMillis() - start;
+        return ResponseEntity.ok(ApiResponse.success(result, MDC.get("correlationId"), duration));
     }
 }

@@ -1,6 +1,7 @@
 package com.atina.invoice.api.controller;
 
 import com.atina.invoice.api.dto.request.CreateAttachmentRuleRequest;
+import com.atina.invoice.api.dto.request.TestRegexRequest;
 import com.atina.invoice.api.dto.request.UpdateAttachmentRuleRequest;
 import com.atina.invoice.api.dto.response.ApiResponse;
 import com.atina.invoice.api.dto.response.AttachmentProcessingRuleResponse;
@@ -126,7 +127,7 @@ public class AttachmentRuleController {
         description = """
             Test a regex pattern against a list of filenames.
             Returns which filenames match the pattern.
-            
+
             Example request:
             {
               "regex": "^Invoice+([0-9])+(.PDF|.pdf)$",
@@ -137,7 +138,7 @@ public class AttachmentRuleController {
                 "Invoice.txt"
               ]
             }
-            
+
             Example response:
             {
               "valid": true,
@@ -154,10 +155,9 @@ public class AttachmentRuleController {
             """
     )
     public ResponseEntity<ApiResponse<Map<String, Object>>> testRegex(
-            @Parameter(description = "Regex pattern to test") @RequestParam String regex,
-            @Parameter(description = "List of filenames to test against") @RequestBody List<String> filenames) {
+            @Valid @RequestBody TestRegexRequest request) {
         long start = System.currentTimeMillis();
-        Map<String, Object> result = attachmentRuleService.testRegex(regex, filenames);
+        Map<String, Object> result = attachmentRuleService.testRegex(request.getRegex(), request.getFilenames());
         long duration = System.currentTimeMillis() - start;
         return ResponseEntity.ok(ApiResponse.success(result, MDC.get("correlationId"), duration));
     }

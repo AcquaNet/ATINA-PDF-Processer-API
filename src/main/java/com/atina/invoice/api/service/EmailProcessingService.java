@@ -66,7 +66,7 @@ public class EmailProcessingService {
             // ----------------------------------------------
 
             try (EmailReaderService.EmailReadContext context =
-                         emailReaderService.openEmailFolder(emailAccount, markAsRead,true)) {
+                         emailReaderService.openEmailFolder(emailAccount, markAsRead,false)) {
 
                 // Leer emails nuevos
                 List<EmailReaderService.EmailMessage> newEmails =

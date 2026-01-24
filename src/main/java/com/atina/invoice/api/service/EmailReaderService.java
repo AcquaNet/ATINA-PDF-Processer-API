@@ -131,7 +131,7 @@ public class EmailReaderService {
     public List<EmailMessage> readNewEmails(EmailAccount emailAccount, boolean markAsRead) {
         List<EmailMessage> emails = new ArrayList<>();
 
-        try (EmailReadContext context = openEmailFolder(emailAccount, markAsRead,true)) {
+        try (EmailReadContext context = openEmailFolder(emailAccount, markAsRead,false)) {
 
             // Obtener mensajes
             Message[] messages = context.folder.getMessages();

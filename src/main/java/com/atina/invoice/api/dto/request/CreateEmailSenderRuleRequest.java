@@ -40,10 +40,6 @@ public class CreateEmailSenderRuleRequest {
     @Builder.Default
     private Boolean processEnabled = true;
 
-    // Paths (opcionales, si no se especifican se usan los del tenant)
-    private String inboundPath;
-    private String metadataPath;
-
     private String description;
 
     @Builder.Default

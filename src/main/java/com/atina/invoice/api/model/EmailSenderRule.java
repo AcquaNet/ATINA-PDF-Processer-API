@@ -97,22 +97,6 @@ public class EmailSenderRule {
     @Builder.Default
     private Boolean processEnabled = true;
 
-    // ========== Paths de Almacenamiento ==========
-
-    /**
-     * Path para archivos entrantes (inbound)
-     * Si es null, usa el default del tenant
-     */
-    @Column(name = "inbound_path", length = 500)
-    private String inboundPath;
-
-    /**
-     * Path para metadata de emails
-     * Si es null, usa el default del tenant
-     */
-    @Column(name = "metadata_path", length = 500)
-    private String metadataPath;
-
     // ========== Reglas de Procesamiento de Attachments ==========
 
     /**

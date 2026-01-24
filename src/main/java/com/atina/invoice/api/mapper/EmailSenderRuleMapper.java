@@ -34,8 +34,6 @@ public class EmailSenderRuleMapper {
                 .templateEmailProcessed(request.getTemplateEmailProcessed())
                 .autoReplyEnabled(request.getAutoReplyEnabled())
                 .processEnabled(request.getProcessEnabled())
-                .inboundPath(request.getInboundPath())
-                .metadataPath(request.getMetadataPath())
                 .description(request.getDescription())
                 .enabled(request.getEnabled())
                 .build();
@@ -66,12 +64,6 @@ public class EmailSenderRuleMapper {
         if (request.getProcessEnabled() != null) {
             entity.setProcessEnabled(request.getProcessEnabled());
         }
-        if (request.getInboundPath() != null) {
-            entity.setInboundPath(request.getInboundPath());
-        }
-        if (request.getMetadataPath() != null) {
-            entity.setMetadataPath(request.getMetadataPath());
-        }
         if (request.getDescription() != null) {
             entity.setDescription(request.getDescription());
         }
@@ -97,8 +89,6 @@ public class EmailSenderRuleMapper {
                 .templateEmailProcessed(entity.getTemplateEmailProcessed())
                 .autoReplyEnabled(entity.getAutoReplyEnabled())
                 .processEnabled(entity.getProcessEnabled())
-                .inboundPath(entity.getInboundPath())
-                .metadataPath(entity.getMetadataPath())
                 .description(entity.getDescription())
                 .enabled(entity.getEnabled())
                 .createdAt(entity.getCreatedAt())
@@ -126,8 +116,6 @@ public class EmailSenderRuleMapper {
                 .templateEmailProcessed(entity.getTemplateEmailProcessed())
                 .autoReplyEnabled(entity.getAutoReplyEnabled())
                 .processEnabled(entity.getProcessEnabled())
-                .inboundPath(entity.getInboundPath())
-                .metadataPath(entity.getMetadataPath())
                 .description(entity.getDescription())
                 .enabled(entity.getEnabled())
                 .createdAt(entity.getCreatedAt())

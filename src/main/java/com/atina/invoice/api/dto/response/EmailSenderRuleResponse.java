@@ -24,8 +24,6 @@ public class EmailSenderRuleResponse {
     private String templateEmailProcessed;
     private Boolean autoReplyEnabled;
     private Boolean processEnabled;
-    private String inboundPath;
-    private String metadataPath;
     private String description;
     private Boolean enabled;
     private Instant createdAt;

@@ -1,18 +1,25 @@
 package com.atina.invoice.api.service;
 
 import com.atina.invoice.api.dto.request.CreateExtractionTemplateRequest;
+import com.atina.invoice.api.dto.request.SaveTemplateContentRequest;
 import com.atina.invoice.api.dto.request.UpdateExtractionTemplateRequest;
 import com.atina.invoice.api.dto.response.ExtractionTemplateResponse;
 import com.atina.invoice.api.model.ExtractionTemplate;
 import com.atina.invoice.api.model.Tenant;
 import com.atina.invoice.api.repository.ExtractionTemplateRepository;
 import com.atina.invoice.api.repository.TenantRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -26,6 +33,7 @@ public class ExtractionTemplateService {
 
     private final ExtractionTemplateRepository templateRepository;
     private final TenantRepository tenantRepository;
+    private final ObjectMapper objectMapper;
 
     /**
      * Listar todos los templates
@@ -196,6 +204,61 @@ public class ExtractionTemplateService {
         log.info("Extraction template status toggled to {}: {}", template.getIsActive(), id);
 
         return toResponse(template);
+    }
+
+    /**
+     * Guardar contenido JSON del template en el filesystem
+     *
+     * @param id ID del template
+     * @param request Request con el contenido JSON
+     * @return Response con el template actualizado
+     */
+    @Transactional
+    public ExtractionTemplateResponse saveTemplateContent(Long id, SaveTemplateContentRequest request) {
+        log.info("Saving template content for template: {}", id);
+
+        ExtractionTemplate template = templateRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Template not found: " + id));
+
+        String fullTemplatePath = template.getFullTemplatePath();
+
+        try {
+            // 1. Crear directorios si no existen
+            Path filePath = Paths.get(fullTemplatePath);
+            Path directory = filePath.getParent();
+
+            if (directory != null && !Files.exists(directory)) {
+                log.info("Creating directory: {}", directory);
+                Files.createDirectories(directory);
+            }
+
+            // 2. Validar si el archivo ya existe
+            if (Files.exists(filePath) && !request.getOverwrite()) {
+                throw new IllegalStateException(
+                        "Template file already exists: " + fullTemplatePath + ". Set overwrite=true to replace it."
+                );
+            }
+
+            // 3. Escribir contenido JSON al archivo
+            String jsonContent = objectMapper.writerWithDefaultPrettyPrinter()
+                    .writeValueAsString(request.getTemplateContent());
+
+            Files.writeString(
+                    filePath,
+                    jsonContent,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING
+            );
+
+            log.info("Template content saved successfully to: {}", fullTemplatePath);
+            log.debug("Template content size: {} bytes", jsonContent.length());
+
+            return toResponse(template);
+
+        } catch (IOException e) {
+            log.error("Failed to save template content for template {}: {}", id, e.getMessage(), e);
+            throw new RuntimeException("Failed to save template content: " + e.getMessage(), e);
+        }
     }
 
     /**

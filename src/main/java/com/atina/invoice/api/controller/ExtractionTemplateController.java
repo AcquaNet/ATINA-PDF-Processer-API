@@ -1,6 +1,7 @@
 package com.atina.invoice.api.controller;
 
 import com.atina.invoice.api.dto.request.CreateExtractionTemplateRequest;
+import com.atina.invoice.api.dto.request.SaveTemplateContentRequest;
 import com.atina.invoice.api.dto.request.UpdateExtractionTemplateRequest;
 import com.atina.invoice.api.dto.response.ApiResponse;
 import com.atina.invoice.api.dto.response.ExtractionTemplateResponse;
@@ -218,6 +219,39 @@ public class ExtractionTemplateController {
         long start = System.currentTimeMillis();
 
         ExtractionTemplateResponse template = templateService.toggleTemplateStatus(id);
+
+        long duration = System.currentTimeMillis() - start;
+
+        return ResponseEntity.ok(ApiResponse.success(template, MDC.get("correlationId"), duration));
+    }
+
+    /**
+     * Guardar contenido JSON del template en el filesystem
+     */
+    @PostMapping("/{id}/save-content")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    @Operation(
+            summary = "[SYSTEM_ADMIN] Save template content to filesystem",
+            description = """
+                    Save the JSON content of an extraction template to the filesystem.
+
+                    The file will be saved to: {tenant.templateBasePath}/{template.templateName}
+
+                    Example:
+                    - Tenant templateBasePath: /config/templates
+                    - Template name: jde_invoice_template.json
+                    - Final path: /config/templates/jde_invoice_template.json
+
+                    Set overwrite=true to replace existing file.
+                    """
+    )
+    public ResponseEntity<ApiResponse<ExtractionTemplateResponse>> saveTemplateContent(
+            @Parameter(description = "Template ID") @PathVariable Long id,
+            @Valid @RequestBody SaveTemplateContentRequest request) {
+
+        long start = System.currentTimeMillis();
+
+        ExtractionTemplateResponse template = templateService.saveTemplateContent(id, request);
 
         long duration = System.currentTimeMillis() - start;
 

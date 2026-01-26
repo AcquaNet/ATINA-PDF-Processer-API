@@ -81,6 +81,14 @@ public class EmailSenderRule {
     @Column(name = "template_email_processed", length = 100)
     private String templateEmailProcessed;
 
+    /**
+     * Email adicional para recibir notificaciones (CC)
+     * Si se configura, este email recibirá copia de las notificaciones
+     * además del senderEmail
+     */
+    @Column(name = "notification_email", length = 255)
+    private String notificationEmail;
+
     // ========== Configuración de Procesamiento ==========
 
     /**

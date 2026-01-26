@@ -59,7 +59,7 @@ public class ExtractionTemplate {
      * Ejemplo: "jde_invoice_template.json"
      */
     @Column(name = "template_name", length = 255, nullable = false)
-    private String templateName;
+    private String templateName = "template.json";
 
     /**
      * Si el template está activo
@@ -103,16 +103,30 @@ public class ExtractionTemplate {
      */
     public String getFullTemplatePath() {
         if (tenant == null || tenant.getTemplateBasePath() == null) {
-            throw new IllegalStateException("Tenant or templateBasePath is null");
+            throw new IllegalStateException("Tenant or TemplateBasePath is null");
         }
 
-        String basePath = tenant.getTemplateBasePath();
+        if (tenant == null || tenant.getStorageBasePath() == null) {
+            throw new IllegalStateException("Tenant or StorageBasePath is null");
+        }
+
+        String storageBasePath = tenant.getStorageBasePath();
 
         // Asegurar que basePath no termine con /
-        if (basePath.endsWith("/")) {
-            basePath = basePath.substring(0, basePath.length() - 1);
+        if (storageBasePath.endsWith("/")) {
+            storageBasePath = storageBasePath.substring(0, storageBasePath.length() - 1);
         }
 
-        return basePath + "/" + templateName;
+        String templateBasePath = tenant.getTemplateBasePath();
+
+        // Asegurar que basePath no termine con /
+        if (templateBasePath.endsWith("/")) {
+            templateBasePath = templateBasePath.substring(0, templateBasePath.length() - 1);
+        }
+
+        String fullPath = String.format("%s/%s/%s/%s",
+                storageBasePath, tenant.getTenantCode(),templateBasePath, templateName);
+
+        return fullPath;
     }
 }

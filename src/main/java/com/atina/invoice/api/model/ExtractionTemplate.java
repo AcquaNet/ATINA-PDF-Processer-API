@@ -54,11 +54,12 @@ public class ExtractionTemplate {
     private String source;
 
     /**
-     * Path absoluto al archivo template JSON en el filesystem
-     * Ejemplo: /opt/invoice-app/templates/jde_invoice_template.json
+     * Nombre del archivo template JSON
+     * El path completo se construye como: {tenant.templateBasePath}/{templateName}
+     * Ejemplo: "jde_invoice_template.json"
      */
-    @Column(name = "template_path", length = 500, nullable = false)
-    private String templatePath;
+    @Column(name = "template_name", length = 255, nullable = false)
+    private String templateName;
 
     /**
      * Si el template está activo
@@ -90,5 +91,28 @@ public class ExtractionTemplate {
     @PreUpdate
     protected void onUpdate() {
         this.updatedAt = Instant.now();
+    }
+
+    // ========== Helper Methods ==========
+
+    /**
+     * Obtener el path completo del template
+     * Construye el path usando tenant.templateBasePath + templateName
+     *
+     * @return Path completo al archivo template
+     */
+    public String getFullTemplatePath() {
+        if (tenant == null || tenant.getTemplateBasePath() == null) {
+            throw new IllegalStateException("Tenant or templateBasePath is null");
+        }
+
+        String basePath = tenant.getTemplateBasePath();
+
+        // Asegurar que basePath no termine con /
+        if (basePath.endsWith("/")) {
+            basePath = basePath.substring(0, basePath.length() - 1);
+        }
+
+        return basePath + "/" + templateName;
     }
 }

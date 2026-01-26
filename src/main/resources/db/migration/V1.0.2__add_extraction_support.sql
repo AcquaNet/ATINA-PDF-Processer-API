@@ -24,7 +24,7 @@ CREATE TABLE extraction_templates (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     tenant_id BIGINT NOT NULL,
     source VARCHAR(50) NOT NULL COMMENT 'Source del documento (JDE, SAP, etc) - debe coincidir con AttachmentProcessingRule.source',
-    template_path VARCHAR(500) NOT NULL COMMENT 'Path absoluto al archivo template JSON en filesystem',
+    template_name VARCHAR(255) NOT NULL COMMENT 'Nombre del archivo template JSON - el path completo se construye con tenant.templateBasePath + templateName',
     is_active BOOLEAN NOT NULL DEFAULT true COMMENT 'Si el template está activo',
     description VARCHAR(255) COMMENT 'Descripción del template',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Fecha de creación',
@@ -93,10 +93,13 @@ COMMENT='Tareas de extracción asíncrona de PDFs';
 -- ========================================================================
 
 -- Descomentar y ajustar según necesidades:
--- INSERT INTO extraction_templates (tenant_id, source, template_path, is_active, description) VALUES
--- (1, 'JDE', '/opt/invoice-app/templates/jde_invoice_template.json', true, 'Template para facturas JDE'),
--- (1, 'SAP', '/opt/invoice-app/templates/sap_invoice_template.json', true, 'Template para facturas SAP'),
--- (1, 'invoices', '/opt/invoice-app/templates/generic_invoice_template.json', true, 'Template genérico para facturas');
+-- El path completo se construye como: {tenant.templateBasePath}/{template_name}
+-- Ejemplo: /config/templates/jde_invoice_template.json
+--
+-- INSERT INTO extraction_templates (tenant_id, source, template_name, is_active, description) VALUES
+-- (1, 'JDE', 'jde_invoice_template.json', true, 'Template para facturas JDE'),
+-- (1, 'SAP', 'sap_invoice_template.json', true, 'Template para facturas SAP'),
+-- (1, 'invoices', 'generic_invoice_template.json', true, 'Template genérico para facturas');
 
 -- ========================================================================
 -- 5. COMENTARIOS

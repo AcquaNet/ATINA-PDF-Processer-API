@@ -20,8 +20,10 @@ public class ExtractionTemplateResponse {
     private Long tenantId;
     private String tenantCode;
     private String tenantName;
+    private String tenantTemplateBasePath;
     private String source;
-    private String templatePath;
+    private String templateName;
+    private String fullTemplatePath; // Calculado: tenantTemplateBasePath + "/" + templateName
     private Boolean isActive;
     private String description;
     private Instant createdAt;

@@ -24,9 +24,9 @@ public class CreateExtractionTemplateRequest {
     @Size(max = 50, message = "Source must not exceed 50 characters")
     private String source;
 
-    @NotBlank(message = "Template path is required")
-    @Size(max = 500, message = "Template path must not exceed 500 characters")
-    private String templatePath;
+    @NotBlank(message = "Template name is required")
+    @Size(max = 255, message = "Template name must not exceed 255 characters")
+    private String templateName;
 
     @Builder.Default
     private Boolean isActive = true;

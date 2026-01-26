@@ -119,8 +119,9 @@ public class ExtractionWorker {
                                     tenantId, source)
                     ));
 
-            log.info("[TASK-{}] Found template: {} (path: {})",
-                    task.getId(), templateConfig.getDescription(), templateConfig.getTemplatePath());
+            log.info("[TASK-{}] Found template: {} (name: {}, fullPath: {})",
+                    task.getId(), templateConfig.getDescription(),
+                    templateConfig.getTemplateName(), templateConfig.getFullTemplatePath());
 
             // 3. Cargar PDF como MultipartFile
             File pdfFile = new File(task.getPdfPath());
@@ -138,13 +139,14 @@ public class ExtractionWorker {
             JsonNode processedData = doclingService.convertPdf(multipartFile);
 
             // 5. Cargar template desde filesystem
+            String fullTemplatePath = templateConfig.getFullTemplatePath();
             log.debug("[TASK-{}] Loading template from: {}",
-                    task.getId(), templateConfig.getTemplatePath());
+                    task.getId(), fullTemplatePath);
 
-            File templateFile = new File(templateConfig.getTemplatePath());
+            File templateFile = new File(fullTemplatePath);
             if (!templateFile.exists()) {
                 throw new FileNotFoundException(
-                        "Template file not found: " + templateConfig.getTemplatePath()
+                        "Template file not found: " + fullTemplatePath
                 );
             }
 

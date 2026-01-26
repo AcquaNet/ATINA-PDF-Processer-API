@@ -114,17 +114,17 @@ public class ExtractionTemplateService {
             );
         }
 
-        // Validar que el archivo existe (opcional)
-        validateTemplateFile(request.getTemplatePath());
-
         // Crear template
         ExtractionTemplate template = ExtractionTemplate.builder()
                 .tenant(tenant)
                 .source(request.getSource())
-                .templatePath(request.getTemplatePath())
+                .templateName(request.getTemplateName())
                 .isActive(request.getIsActive() != null ? request.getIsActive() : true)
                 .description(request.getDescription())
                 .build();
+
+        // Validar que el archivo existe (opcional)
+        validateTemplateFile(template.getFullTemplatePath());
 
         template = templateRepository.save(template);
 
@@ -144,9 +144,9 @@ public class ExtractionTemplateService {
                 .orElseThrow(() -> new IllegalArgumentException("Template not found: " + id));
 
         // Actualizar campos si se proporcionan
-        if (request.getTemplatePath() != null) {
-            validateTemplateFile(request.getTemplatePath());
-            template.setTemplatePath(request.getTemplatePath());
+        if (request.getTemplateName() != null) {
+            template.setTemplateName(request.getTemplateName());
+            validateTemplateFile(template.getFullTemplatePath());
         }
 
         if (request.getIsActive() != null) {
@@ -201,18 +201,20 @@ public class ExtractionTemplateService {
     /**
      * Validar que el archivo template existe
      * (Opcional - puede omitirse si los templates se crean después)
+     *
+     * @param fullTemplatePath Path completo al archivo template
      */
-    private void validateTemplateFile(String templatePath) {
-        File file = new File(templatePath);
+    private void validateTemplateFile(String fullTemplatePath) {
+        File file = new File(fullTemplatePath);
 
         if (!file.exists()) {
-            log.warn("Template file does not exist: {} (will be created later)", templatePath);
+            log.warn("Template file does not exist: {} (will be created later)", fullTemplatePath);
             // No lanzar excepción, solo advertir
-            // throw new IllegalArgumentException("Template file does not exist: " + templatePath);
+            // throw new IllegalArgumentException("Template file does not exist: " + fullTemplatePath);
         }
 
         if (file.exists() && !file.canRead()) {
-            throw new IllegalArgumentException("Template file is not readable: " + templatePath);
+            throw new IllegalArgumentException("Template file is not readable: " + fullTemplatePath);
         }
     }
 
@@ -225,8 +227,10 @@ public class ExtractionTemplateService {
                 .tenantId(template.getTenant().getId())
                 .tenantCode(template.getTenant().getTenantCode())
                 .tenantName(template.getTenant().getTenantName())
+                .tenantTemplateBasePath(template.getTenant().getTemplateBasePath())
                 .source(template.getSource())
-                .templatePath(template.getTemplatePath())
+                .templateName(template.getTemplateName())
+                .fullTemplatePath(template.getFullTemplatePath())
                 .isActive(template.getIsActive())
                 .description(template.getDescription())
                 .createdAt(template.getCreatedAt())

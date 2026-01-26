@@ -15,8 +15,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class UpdateExtractionTemplateRequest {
 
-    @Size(max = 500, message = "Template path must not exceed 500 characters")
-    private String templatePath;
+    @Size(max = 255, message = "Template name must not exceed 255 characters")
+    private String templateName;
 
     private Boolean isActive;
 

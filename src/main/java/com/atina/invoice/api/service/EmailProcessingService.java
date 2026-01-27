@@ -426,7 +426,7 @@ public class EmailProcessingService {
                 if (senderRule.getAutoReplyEnabled()) {
                     try {
                         log.info("📧 Sending received email notification");
-                        emailNotificationService.sendReceivedEmail(processedEmail);
+                        emailNotificationService.sendReceivedEmail(processedEmail,savedAttachments);
                     } catch (Exception e) {
                         log.error("Failed to send received email notification: {}", e.getMessage(), e);
                         // No fallar el procesamiento si falla notificación

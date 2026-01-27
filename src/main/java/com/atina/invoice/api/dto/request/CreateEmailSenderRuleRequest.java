@@ -33,6 +33,13 @@ public class CreateEmailSenderRuleRequest {
     private String templateEmailReceived;
     private String templateEmailProcessed;
 
+    // Email subjects
+    private String subjectEmailReceived;
+    private String subjectEmailProcessed;
+
+    // Notification email (CC)
+    private String notificationEmail;
+
     // Configuración
     @Builder.Default
     private Boolean autoReplyEnabled = true;

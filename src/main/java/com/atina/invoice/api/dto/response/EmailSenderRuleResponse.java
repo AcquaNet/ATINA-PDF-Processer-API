@@ -22,6 +22,9 @@ public class EmailSenderRuleResponse {
     private String senderName;
     private String templateEmailReceived;
     private String templateEmailProcessed;
+    private String subjectEmailReceived;
+    private String subjectEmailProcessed;
+    private String notificationEmail;
     private Boolean autoReplyEnabled;
     private Boolean processEnabled;
     private String description;

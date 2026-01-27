@@ -97,6 +97,19 @@
             <version>2.0.1</version>
         </dependency>
 
+        <!-- Spring Boot Mail for sending emails -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
+        <!-- JMustache for HTML template rendering -->
+        <dependency>
+            <groupId>com.samskivert</groupId>
+            <artifactId>jmustache</artifactId>
+            <version>1.16</version>
+        </dependency>
+
 
         <!-- ========================================
              Schema

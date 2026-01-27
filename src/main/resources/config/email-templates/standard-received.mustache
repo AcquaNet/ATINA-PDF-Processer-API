@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #4A90E2; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+        .content { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; }
+        .footer { background: #f1f1f1; padding: 15px; text-align: center; font-size: 12px; color: #666; border-radius: 0 0 5px 5px; }
+        .info-box { background: white; padding: 15px; margin: 15px 0; border-left: 4px solid #4A90E2; }
+        .file-list { background: white; padding: 15px; margin: 15px 0; }
+        .file-item { padding: 8px; border-bottom: 1px solid #eee; }
+        .highlight { color: #4A90E2; font-weight: bold; }
+        .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>✓ Receipt Confirmation</h2>
+        </div>
+
+        <div class="content">
+            <p>Hello,</p>
+
+            <p>This is to confirm that we have successfully received your email and are processing the attached documents.</p>
+
+            <div class="info-box">
+                <h3>Email Details</h3>
+                <p><strong>Received:</strong> {{receivedAt}}</p>
+                <p><strong>From:</strong> {{fromAddress}}</p>
+                <p><strong>Subject:</strong> {{subject}}</p>
+                <p><strong>Tracking ID:</strong> <code>{{correlationId}}</code></p>
+            </div>
+
+            <div class="file-list">
+                <h3>Validated Documents</h3>
+                <p>The following <span class="highlight">{{processedAttachments}}</span> file(s) matched our processing rules and will be extracted:</p>
+
+                {{#attachments}}
+                <div class="file-item">
+                    📄 <strong>{{filename}}</strong>
+                    {{#size}}<span style="color: #999;"> ({{size}})</span>{{/size}}
+                </div>
+                {{/attachments}}
+
+                {{^attachments}}
+                <p><em>No valid documents found in this email.</em></p>
+                {{/attachments}}
+            </div>
+
+            {{#hasRejected}}
+            <div class="warning">
+                <strong>⚠️ Note:</strong> {{totalAttachments}} attachment(s) were received, but only {{processedAttachments}} matched processing rules. Unmatched files were ignored.
+            </div>
+            {{/hasRejected}}
+
+            <p>You will receive another notification once the extraction process is complete.</p>
+
+            <p><em>If you believe any expected document is missing from the list above, please re-send the email or contact our support team.</em></p>
+        </div>
+
+        <div class="footer">
+            <p><strong>Atina – Email Converter</strong></p>
+            <p>Automated document processing system | <strong>{{tenantName}}</strong></p>
+            <p style="font-size: 10px; color: #999;">Email ID: {{emailId}} | Correlation ID: {{correlationId}}</p>
+        </div>
+    </div>
+</body>
+</html>

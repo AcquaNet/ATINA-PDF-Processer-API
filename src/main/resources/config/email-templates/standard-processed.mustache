@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #28a745; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+        .header.partial { background: #ffc107; }
+        .header.failed { background: #dc3545; }
+        .content { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; }
+        .footer { background: #f1f1f1; padding: 15px; text-align: center; font-size: 12px; color: #666; border-radius: 0 0 5px 5px; }
+        .stats { display: flex; justify-content: space-around; margin: 20px 0; }
+        .stat-box { background: white; padding: 15px; text-align: center; border-radius: 5px; flex: 1; margin: 0 5px; }
+        .stat-number { font-size: 32px; font-weight: bold; color: #4A90E2; }
+        .success { color: #28a745; }
+        .failed { color: #dc3545; }
+        .extraction { background: white; padding: 15px; margin: 15px 0; border-left: 4px solid #4A90E2; }
+        .invoice-data { background: #f8f9fa; padding: 10px; margin: 10px 0; font-family: monospace; font-size: 12px; }
+        .error { background: #f8d7da; border-left: 4px solid #dc3545; padding: 15px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header {{#isFullSuccess}}{{/isFullSuccess}}{{#hasFailures}}{{#hasSuccesses}}partial{{/hasSuccesses}}{{^hasSuccesses}}failed{{/hasSuccesses}}{{/hasFailures}}">
+            <h2>{{#isFullSuccess}}✓ Processing Complete{{/isFullSuccess}}{{#hasFailures}}{{#hasSuccesses}}⚠️ Processing Partially Complete{{/hasSuccesses}}{{^hasSuccesses}}✗ Processing Failed{{/hasSuccesses}}{{/hasFailures}}</h2>
+        </div>
+
+        <div class="content">
+            <p>Hello,</p>
+
+            <p>The document extraction process for your email has been completed.</p>
+
+            <div class="stats">
+                <div class="stat-box">
+                    <div class="stat-number">{{totalFiles}}</div>
+                    <div>Total Files</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number success">{{extractedFiles}}</div>
+                    <div>Extracted</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number failed">{{failedFiles}}</div>
+                    <div>Failed</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">{{successRate}}%</div>
+                    <div>Success Rate</div>
+                </div>
+            </div>
+
+            <h3>Extraction Results</h3>
+
+            {{#extractions}}
+            <div class="extraction">
+                <h4>📄 {{filename}}</h4>
+                <p><strong>Status:</strong> <span class="{{#success}}success{{/success}}{{^success}}failed{{/success}}">{{status}}</span></p>
+
+                {{#success}}
+                    {{#hasInvoiceData}}
+                    <div class="invoice-data">
+                        <strong>Extracted Data:</strong><br>
+                        {{#invoiceNumber}}• Invoice #: {{invoiceNumber}}<br>{{/invoiceNumber}}
+                        {{#invoiceDate}}• Date: {{invoiceDate}}<br>{{/invoiceDate}}
+                        {{#total}}• Amount: {{total}} {{currency}}<br>{{/total}}
+                        {{#vendor}}• Vendor: {{vendor}}<br>{{/vendor}}
+                    </div>
+                    {{/hasInvoiceData}}
+
+                    <p style="font-size: 12px; color: #666;">
+                        Result file: <code>{{resultPath}}</code>
+                    </p>
+                {{/success}}
+
+                {{^success}}
+                <div class="error">
+                    <strong>Error:</strong> {{errorMessage}}
+                </div>
+                {{/success}}
+            </div>
+            {{/extractions}}
+
+            {{^extractions}}
+            <p><em>No extraction tasks were found for this email.</em></p>
+            {{/extractions}}
+
+            <p style="margin-top: 30px;">
+                <strong>Next Steps:</strong><br>
+                {{#isFullSuccess}}
+                The extracted data has been sent to your webhook endpoint and is ready for integration into your systems.
+                {{/isFullSuccess}}
+                {{#hasFailures}}
+                Please review the failed extractions. If the issue persists, contact our support team with the tracking ID below.
+                {{/hasFailures}}
+            </p>
+
+            <p style="font-size: 12px; color: #666;">
+                <strong>Tracking ID:</strong> <code>{{correlationId}}</code>
+            </p>
+        </div>
+
+        <div class="footer">
+            <p><strong>Atina – Email Converter</strong></p>
+            <p>Automated document processing system | <strong>{{tenantName}}</strong></p>
+            <p style="font-size: 10px; color: #999;">Email ID: {{emailId}} | Correlation ID: {{correlationId}}</p>
+        </div>
+    </div>
+</body>
+</html>

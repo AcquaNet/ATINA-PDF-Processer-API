@@ -68,18 +68,33 @@ public class EmailSenderRule {
 
     /**
      * Nombre del template HTML para email recibido
-     * (ej: "reply-mail-received.html")
-     * Path completo: {tenant.template_base_path}/{template_email_received}
+     * (ej: "standard-received.mustache")
+     * Path completo: {tenant.storageBasePath}/{tenant.tenantCode}/config/email-templates/{templateEmailReceived}
      */
     @Column(name = "template_email_received", length = 100)
     private String templateEmailReceived;
 
     /**
+     * Subject line para email de recepción
+     */
+    @Column(name = "subject_email_received", length = 200)
+    @Builder.Default
+    private String subjectEmailReceived = "Receipt Confirmation - Documents Received";
+
+    /**
      * Nombre del template HTML para email procesado
-     * (ej: "reply-mail-processed.html")
+     * (ej: "standard-processed.mustache")
+     * Path completo: {tenant.storageBasePath}/{tenant.tenantCode}/config/email-templates/{templateEmailProcessed}
      */
     @Column(name = "template_email_processed", length = 100)
     private String templateEmailProcessed;
+
+    /**
+     * Subject line para email de procesamiento completo
+     */
+    @Column(name = "subject_email_processed", length = 200)
+    @Builder.Default
+    private String subjectEmailProcessed = "Processing Complete - Extraction Results";
 
     /**
      * Email adicional para recibir notificaciones (CC)

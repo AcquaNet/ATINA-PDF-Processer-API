@@ -22,6 +22,13 @@ public interface ProcessedAttachmentRepository extends JpaRepository<ProcessedAt
     List<ProcessedAttachment> findByProcessingStatus(AttachmentProcessingStatus status);
 
     /**
+     * Listar attachments de un email por estado
+     */
+    List<ProcessedAttachment> findByProcessedEmailIdAndProcessingStatus(
+            Long processedEmailId,
+            AttachmentProcessingStatus status);
+
+    /**
      * Listar attachments que matchearon reglas y están pendientes de extracción
      */
     @Query("SELECT a FROM ProcessedAttachment a WHERE a.rule IS NOT NULL " +

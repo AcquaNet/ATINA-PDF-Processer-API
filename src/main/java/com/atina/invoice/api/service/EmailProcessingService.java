@@ -42,6 +42,10 @@ public class EmailProcessingService {
     private final EmailProcessingHelpers helpers;
     private final ObjectMapper objectMapper;
 
+    // ⭐ NUEVO: Servicios para extracción asíncrona y notificaciones
+    private final PdfExtractionService pdfExtractionService;
+    private final EmailNotificationService emailNotificationService;
+
     /**
      * ⭐ NUEVO: Habilitar/deshabilitar marcar como leído
      * Se puede configurar en application.properties:
@@ -401,10 +405,33 @@ public class EmailProcessingService {
                 processedEmail.setMetadataFilePath(metadataPath);
                 processedEmail.setRawMetadata("metadata");
                 processedEmail.markAsCompleted();
-                processedEmailRepository.save(processedEmail);
+                processedEmail = processedEmailRepository.save(processedEmail);
 
                 log.info("✅ [EMAIL-END] Email {} processed successfully: {} attachments [correlationId={}]",
                         emailMessage.uid, savedAttachments.size(), correlationId);
+
+                // 9. ⭐ NUEVO: Encolar extracciones asíncronas
+                if (senderRule.getProcessEnabled() && !savedAttachments.isEmpty()) {
+                    try {
+                        log.info("📋 Enqueuing extraction tasks for email: {}", processedEmail.getId());
+                        pdfExtractionService.enqueueEmailExtractions(processedEmail);
+                    } catch (Exception e) {
+                        log.error("Failed to enqueue extractions for email {}: {}",
+                                processedEmail.getId(), e.getMessage(), e);
+                        // No fallar el procesamiento si falla encolar
+                    }
+                }
+
+                // 10. ⭐ NUEVO: Enviar notificación de recepción
+                if (senderRule.getAutoReplyEnabled()) {
+                    try {
+                        log.info("📧 Sending received email notification");
+                        emailNotificationService.sendReceivedEmail(processedEmail);
+                    } catch (Exception e) {
+                        log.error("Failed to send received email notification: {}", e.getMessage(), e);
+                        // No fallar el procesamiento si falla notificación
+                    }
+                }
 
                 return true; // Procesado exitosamente
 

@@ -78,6 +78,13 @@ public class Tenant {
     @Column(name = "template_base_path")
     private String templateBasePath = "/config/templates";
 
+    /**
+     * Webhook URL para notificaciones de extracción completada
+     * Se llama cuando todas las tareas de extracción de un email se completan
+     */
+    @Column(name = "webhook_url", length = 500)
+    private String webhookUrl;
+
     // Campos S3 (opcionales)
     @Column(name = "s3_bucket_name")
     private String s3BucketName;

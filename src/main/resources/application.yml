@@ -201,3 +201,32 @@ email:
   # true = marca como leído SOLO los que se procesan exitosamente
   # false = no marca nada como leído
   mark-as-read: true
+
+# ============================================
+# EXTRACTION SYSTEM CONFIGURATION
+# ============================================
+
+extraction:
+  # Worker configuration
+  worker:
+    # Habilitar/deshabilitar el worker de extracción
+    enabled: true
+    # Intervalo de polling en milisegundos (5000ms = 5 segundos)
+    poll-interval-ms: 5000
+    # Tamaño del batch (cuántas tareas procesar por ejecución)
+    batch-size: 5
+    # Delay de retry en segundos (60s = 1 minuto)
+    retry-delay-seconds: 60
+    # Umbral en minutos para detectar tareas atascadas (30min)
+    stuck-task-threshold-minutes: 30
+
+  # Webhook configuration
+  webhook:
+    # Habilitar/deshabilitar envío de webhooks
+    enabled: false
+    # Timeout en segundos
+    timeout-seconds: 30
+    # Número de reintentos
+    retry-attempts: 3
+    # Delay entre reintentos en segundos (usa exponential backoff)
+    retry-delay-seconds: 60

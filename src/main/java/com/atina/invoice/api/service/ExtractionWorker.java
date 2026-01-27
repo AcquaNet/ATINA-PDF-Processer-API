@@ -2,13 +2,11 @@ package com.atina.invoice.api.service;
 
 import com.atina.invoice.api.config.ExtractionProperties;
 import com.atina.invoice.api.dto.request.ExtractionOptions;
-import com.atina.invoice.api.model.ExtractionTask;
-import com.atina.invoice.api.model.ExtractionTemplate;
-import com.atina.invoice.api.model.ProcessedEmail;
-import com.atina.invoice.api.model.Tenant;
+import com.atina.invoice.api.model.*;
 import com.atina.invoice.api.model.enums.ExtractionStatus;
 import com.atina.invoice.api.repository.ExtractionTaskRepository;
 import com.atina.invoice.api.repository.ExtractionTemplateRepository;
+import com.atina.invoice.api.repository.ProcessedEmailRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -19,11 +17,14 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Worker asíncrono para procesar tareas de extracción de PDFs
@@ -44,6 +45,7 @@ public class ExtractionWorker {
 
     private final ExtractionTaskRepository taskRepository;
     private final ExtractionTemplateRepository templateRepository;
+    private final ProcessedEmailRepository emailRepository;
     private final DoclingService doclingService;
     private final ExtractionService extractionService;
     private final WebhookService webhookService;
@@ -97,20 +99,35 @@ public class ExtractionWorker {
      */
     @Transactional
     protected void processTask(ExtractionTask task) {
-        log.info("🔄 [TASK-{}] Processing extraction task for PDF: {}",
-                task.getId(), task.getPdfPath());
+        Long taskId = task.getId();
 
-        // 1. Mark as processing
+        log.info("🔄 [TASK-{}] Processing extraction task for PDF: {}",
+                taskId, task.getPdfPath());
+
+        // 1. Re-cargar la tarea con todas sus relaciones para evitar LazyInitializationException
+        task = taskRepository.findByIdWithRelations(taskId);
+        if (task == null) {
+            log.error("❌ [TASK-{}] Task not found when reloading", taskId);
+            return;
+        }
+
+        // 2. Extraer datos necesarios ANTES de hacer save() (para evitar lazy loading después)
+        ProcessedEmail email = task.getEmail();
+        Tenant tenant = email.getTenant();
+        ProcessedAttachment attachment = task.getAttachment();
+        Long tenantId = tenant.getId();
+        String source = task.getSource();
+        String pdfPath = task.getPdfPath();
+
+        // 3. Mark as processing
         task.markAsProcessing();
-        task = taskRepository.save(task);
+        taskRepository.save(task);
 
         try {
-            // 2. Buscar template para (tenant, source)
-            Long tenantId = task.getEmail().getTenant().getId();
-            String source = task.getSource();
+            // 4. Buscar template para (tenant, source)
 
-            log.debug("[TASK-{}] Looking for template: tenant={}, source={}",
-                    task.getId(), tenantId, source);
+            log.info("[TASK-{}] Looking for template: tenant={}, source={}",
+                    taskId, tenantId, source);
 
             ExtractionTemplate templateConfig = templateRepository
                     .findByTenantIdAndSourceAndIsActive(tenantId, source, true)
@@ -120,28 +137,28 @@ public class ExtractionWorker {
                     ));
 
             log.info("[TASK-{}] Found template: {} (name: {}, fullPath: {})",
-                    task.getId(), templateConfig.getDescription(),
+                    taskId, templateConfig.getDescription(),
                     templateConfig.getTemplateName(), templateConfig.getFullTemplatePath());
 
-            // 3. Cargar PDF como MultipartFile
-            File pdfFile = new File(task.getPdfPath());
+            // 5. Cargar PDF como MultipartFile
+            File pdfFile = new File(pdfPath);
             if (!pdfFile.exists()) {
-                throw new FileNotFoundException("PDF file not found: " + task.getPdfPath());
+                throw new FileNotFoundException("PDF file not found: " + pdfPath);
             }
 
-            log.debug("[TASK-{}] Loading PDF file: {} ({} bytes)",
-                    task.getId(), pdfFile.getName(), pdfFile.length());
+            log.info("[TASK-{}] Loading PDF file: {} ({} bytes)",
+                    taskId, pdfFile.getName(), pdfFile.length());
 
             MultipartFile multipartFile = convertFileToMultipartFile(pdfFile);
 
-            // 4. PDF → JSON interno (usando DoclingService)
-            log.info("[TASK-{}] Converting PDF to internal format...", task.getId());
+            // 6. PDF → JSON interno (usando DoclingService)
+            log.info("[TASK-{}] Converting PDF to internal format...", taskId);
             JsonNode processedData = doclingService.convertPdf(multipartFile);
 
-            // 5. Cargar template desde filesystem
+            // 7. Cargar template desde filesystem
             String fullTemplatePath = templateConfig.getFullTemplatePath();
-            log.debug("[TASK-{}] Loading template from: {}",
-                    task.getId(), fullTemplatePath);
+            log.info("[TASK-{}] Loading template from: {}",
+                    taskId, fullTemplatePath);
 
             File templateFile = new File(fullTemplatePath);
             if (!templateFile.exists()) {
@@ -152,8 +169,8 @@ public class ExtractionWorker {
 
             JsonNode template = objectMapper.readTree(templateFile);
 
-            // 6. Extraer datos (usando ExtractionService)
-            log.info("[TASK-{}] Extracting data from PDF...", task.getId());
+            // 8. Extraer datos (usando ExtractionService)
+            log.info("[TASK-{}] Extracting data from PDF...", taskId);
 
             ExtractionOptions options = new ExtractionOptions();
             options.setIncludeMeta(true);
@@ -162,24 +179,24 @@ public class ExtractionWorker {
 
             JsonNode result = extractionService.extract(processedData, template, options);
 
-            // 7. Guardar resultado JSON
+            // 9. Guardar resultado JSON
             String resultJson = objectMapper.writerWithDefaultPrettyPrinter()
                     .writeValueAsString(result);
-            String resultPath = saveExtractionResult(task, resultJson);
+            String resultPath = saveExtractionResult(tenant, email, attachment, resultJson);
 
-            log.info("[TASK-{}] Extraction result saved to: {}", task.getId(), resultPath);
+            log.info("[TASK-{}] Extraction result saved to: {}", taskId, resultPath);
 
-            // 8. Actualizar tarea como completada
+            // 10. Actualizar tarea como completada
             task.markAsCompleted(resultPath, resultJson);
             taskRepository.save(task);
 
-            log.info("✅ [TASK-{}] Extraction completed successfully", task.getId());
+            log.info("✅ [TASK-{}] Extraction completed successfully", taskId);
 
-            // 9. Verificar si email está completamente procesado
-            checkEmailCompletion(task.getEmail());
+            // 11. Verificar si email está completamente procesado
+            checkEmailCompletion(email);
 
         } catch (Exception e) {
-            log.error("❌ [TASK-{}] Extraction failed: {}", task.getId(), e.getMessage(), e);
+            log.error("❌ [TASK-{}] Extraction failed: {}", taskId, e.getMessage(), e);
 
             int retryDelay = calculateRetryDelay(task.getAttempts());
             task.markForRetry(e.getMessage(), retryDelay);
@@ -215,23 +232,53 @@ public class ExtractionWorker {
      *
      * Path: {tenant_storage_base}/{tenant_code}/process/extractions/{email_id}_{attachment_id}_extraction.json
      */
-    private String saveExtractionResult(ExtractionTask task, String resultJson) throws IOException {
-        Tenant tenant = task.getEmail().getTenant();
-        String basePath = tenant.getStorageBasePath();
+    private String saveExtractionResult(Tenant tenant, ProcessedEmail email, ProcessedAttachment attachment, String resultJson) throws IOException {
 
-        // Crear directorio: /tenant/process/extractions/
-        Path directory = Paths.get(basePath, tenant.getTenantCode(), "process", "extractions");
+        Objects.requireNonNull(tenant, "tenant is required");
+        Objects.requireNonNull(email, "email is required");
+        Objects.requireNonNull(attachment, "attachment is required");
+        Objects.requireNonNull(resultJson, "resultJson is required");
+
+        String basePath = tenant.getStorageBasePath();
+        if (basePath == null || basePath.isBlank()) {
+            throw new IllegalStateException("Tenant storageBasePath is missing");
+        }
+        String tenantCode = tenant.getTenantCode();
+        if (tenantCode == null || tenantCode.isBlank()) {
+            throw new IllegalStateException("Tenant tenantCode is missing");
+        }
+
+        // /{basePath}/{tenantCode}/process/extractions/
+        Path directory = Paths.get(basePath, tenantCode, "process", "extractions");
         Files.createDirectories(directory);
 
-        // Nombre archivo: {email_id}_{attachment_id}_extraction.json
-        String filename = String.format("%d_%d_extraction.json",
-                task.getEmail().getId(),
-                task.getAttachment().getId());
+        // Safer filename + deterministic uniqueness
+        String normalized = attachment.getNormalizedFilename();
+        if (normalized == null || normalized.isBlank()) {
+            normalized = "attachment";
+        }
+        normalized = normalized.replaceAll("[\\\\/\\r\\n\\t]", "_"); // avoid path traversal / weird chars
 
-        Path filePath = directory.resolve(filename);
-        Files.writeString(filePath, resultJson);
+        // Example: {emailId}_{attachmentId}_{normalized}.extraction.json
+        String filename = String.format("%s.extraction.json",
+                normalized
+        );
 
-        log.debug("Saved extraction result to: {}", filePath);
+        Path filePath = directory.resolve(filename).normalize();
+        if (!filePath.startsWith(directory)) {
+            throw new IllegalStateException("Invalid filename produced a path outside the target directory");
+        }
+
+        Files.writeString(
+                filePath,
+                resultJson,
+                StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING
+        );
+
+        log.info("Saved extraction result: tenant={} emailId={} attachmentId={} path={}",
+                tenantCode, email.getId(), attachment.getId(), filePath);
 
         return filePath.toString();
     }
@@ -242,13 +289,19 @@ public class ExtractionWorker {
      */
     @Transactional
     protected void checkEmailCompletion(ProcessedEmail email) {
+        Long emailId = email.getId();
+
+        // Re-cargar email con relaciones (tenant, senderRule) para evitar LazyInitializationException
+        email = emailRepository.findByIdWithRelations(emailId)
+                .orElseThrow(() -> new RuntimeException("Email not found: " + emailId));
+
         List<ExtractionTask> tasks = taskRepository
-                .findByEmailIdOrderByCreatedAtAsc(email.getId());
+                .findByEmailIdOrderByCreatedAtAsc(emailId);
 
         boolean allDone = tasks.stream().allMatch(ExtractionTask::isTerminal);
 
         if (!allDone) {
-            log.debug("[EMAIL-{}] Not all tasks completed yet", email.getId());
+            log.info("[EMAIL-{}] Not all tasks completed yet", emailId);
             return;
         }
 
@@ -260,19 +313,20 @@ public class ExtractionWorker {
                 .count();
 
         log.info("✅ [EMAIL-{}] All extraction tasks completed: {}/{} successful, {} failed",
-                email.getId(), completed, tasks.size(), failed);
+                emailId, completed, tasks.size(), failed);
 
         // Enviar webhook si está configurado
         if (properties.getWebhook().isEnabled() &&
+            email.getTenant() != null &&
             email.getTenant().getWebhookUrl() != null &&
             !email.getTenant().getWebhookUrl().isBlank()) {
 
             try {
-                log.info("[EMAIL-{}] Sending webhook notification", email.getId());
+                log.info("[EMAIL-{}] Sending webhook notification", emailId);
                 webhookService.sendExtractionCompletedWebhook(email, tasks);
             } catch (Exception e) {
                 log.error("[EMAIL-{}] Failed to send webhook: {}",
-                        email.getId(), e.getMessage(), e);
+                        emailId, e.getMessage(), e);
             }
         }
 
@@ -282,11 +336,11 @@ public class ExtractionWorker {
             email.getSenderRule().getTemplateEmailProcessed() != null) {
 
             try {
-                log.info("[EMAIL-{}] Sending processed email notification", email.getId());
+                log.info("[EMAIL-{}] Sending processed email notification", emailId);
                 emailNotificationService.sendProcessedEmail(email, tasks);
             } catch (Exception e) {
                 log.error("[EMAIL-{}] Failed to send email notification: {}",
-                        email.getId(), e.getMessage(), e);
+                        emailId, e.getMessage(), e);
             }
         }
     }

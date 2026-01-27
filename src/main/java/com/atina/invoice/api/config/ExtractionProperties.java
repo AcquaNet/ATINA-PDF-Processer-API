@@ -56,7 +56,7 @@ public class ExtractionProperties {
         /**
          * Enable/disable webhooks
          */
-        private boolean enabled = true;
+        private boolean enabled = false;
 
         /**
          * Webhook timeout in seconds

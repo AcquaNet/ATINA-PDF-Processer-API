@@ -19,8 +19,15 @@ public interface ExtractionTaskRepository extends JpaRepository<ExtractionTask, 
     /**
      * Buscar tareas de un email específico
      * Útil para verificar si todas las tareas de un email completaron
+     *
+     * IMPORTANTE: Usa JOIN FETCH para cargar relaciones y evitar LazyInitializationException
      */
-    List<ExtractionTask> findByEmailIdOrderByCreatedAtAsc(Long emailId);
+    @Query("SELECT t FROM ExtractionTask t " +
+           "LEFT JOIN FETCH t.email e " +
+           "LEFT JOIN FETCH e.tenant " +
+           "WHERE t.email.id = :emailId " +
+           "ORDER BY t.createdAt ASC")
+    List<ExtractionTask> findByEmailIdOrderByCreatedAtAsc(@Param("emailId") Long emailId);
 
     /**
      * Buscar próximas tareas a procesar
@@ -29,11 +36,16 @@ public interface ExtractionTaskRepository extends JpaRepository<ExtractionTask, 
      * - Tareas RETRYING cuyo nextRetryAt ya pasó
      * Ordenadas por prioridad (mayor primero) y luego por fecha creación
      *
+     * IMPORTANTE: Usa JOIN FETCH para cargar email y tenant en la misma query
+     * y evitar LazyInitializationException
+     *
      * @param now Fecha/hora actual
      * @return Lista de tareas listas para procesar
      */
-    @Query("SELECT t FROM ExtractionTask t WHERE " +
-           "(t.status = 'PENDING' OR " +
+    @Query("SELECT t FROM ExtractionTask t " +
+           "LEFT JOIN FETCH t.email e " +
+           "LEFT JOIN FETCH e.tenant " +
+           "WHERE (t.status = 'PENDING' OR " +
            " (t.status = 'RETRYING' AND t.nextRetryAt <= :now)) " +
            "ORDER BY t.priority DESC, t.createdAt ASC")
     List<ExtractionTask> findNextTasksToProcess(@Param("now") Instant now);
@@ -47,17 +59,32 @@ public interface ExtractionTaskRepository extends JpaRepository<ExtractionTask, 
      * Buscar tareas "atascadas" (PROCESSING por demasiado tiempo)
      * Útil para recovery/cleanup
      *
+     * IMPORTANTE: Usa JOIN FETCH para cargar relaciones y evitar LazyInitializationException
+     *
      * @param threshold Instante antes del cual se considera atascada
      * @return Tareas en PROCESSING desde antes del threshold
      */
-    @Query("SELECT t FROM ExtractionTask t WHERE " +
-           "t.status = 'PROCESSING' AND t.startedAt < :threshold")
+    @Query("SELECT t FROM ExtractionTask t " +
+           "LEFT JOIN FETCH t.email e " +
+           "LEFT JOIN FETCH e.tenant " +
+           "WHERE t.status = 'PROCESSING' AND t.startedAt < :threshold")
     List<ExtractionTask> findStuckTasks(@Param("threshold") Instant threshold);
 
     /**
      * Buscar tareas por estado
      */
     List<ExtractionTask> findByStatus(ExtractionStatus status);
+
+    /**
+     * Buscar una tarea por ID con todas sus relaciones cargadas
+     * IMPORTANTE: Usa JOIN FETCH para evitar LazyInitializationException
+     */
+    @Query("SELECT t FROM ExtractionTask t " +
+           "LEFT JOIN FETCH t.email e " +
+           "LEFT JOIN FETCH e.tenant " +
+           "LEFT JOIN FETCH t.attachment " +
+           "WHERE t.id = :id")
+    ExtractionTask findByIdWithRelations(@Param("id") Long id);
 
     /**
      * Buscar tareas por attachment

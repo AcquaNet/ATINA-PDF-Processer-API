@@ -19,15 +19,23 @@ public interface ExtractionTemplateRepository extends JpaRepository<ExtractionTe
      * Buscar template activo por tenant y source
      * Este es el método principal para encontrar qué template usar
      *
+     * IMPORTANTE: Usa JOIN FETCH para cargar el tenant y evitar LazyInitializationException
+     * cuando se llama a templateConfig.getFullTemplatePath() (que accede a tenant.getStorageBasePath())
+     *
      * @param tenantId ID del tenant
      * @param source Source del documento (ej: "JDE", "SAP")
      * @param isActive Si debe estar activo
      * @return Template si existe
      */
+    @Query("SELECT t FROM ExtractionTemplate t " +
+           "LEFT JOIN FETCH t.tenant " +
+           "WHERE t.tenant.id = :tenantId " +
+           "AND t.source = :source " +
+           "AND t.isActive = :isActive")
     Optional<ExtractionTemplate> findByTenantIdAndSourceAndIsActive(
-            Long tenantId,
-            String source,
-            Boolean isActive
+            @Param("tenantId") Long tenantId,
+            @Param("source") String source,
+            @Param("isActive") Boolean isActive
     );
 
     /**

@@ -83,4 +83,16 @@ public interface ProcessedEmailRepository extends JpaRepository<ProcessedEmail, 
             "LEFT JOIN FETCH e.attachments " +
             "WHERE e.id = :id")
     Optional<ProcessedEmail> findByIdWithAttachments(@org.springframework.data.repository.query.Param("id") Long id);
+
+    /**
+     * Buscar email por ID con tenant y senderRule cargados (EAGER)
+     *
+     * Usado por ExtractionWorker.checkEmailCompletion() para evitar LazyInitializationException
+     * cuando se accede a email.getTenant() y email.getSenderRule()
+     */
+    @Query("SELECT e FROM ProcessedEmail e " +
+            "LEFT JOIN FETCH e.tenant " +
+            "LEFT JOIN FETCH e.senderRule " +
+            "WHERE e.id = :id")
+    Optional<ProcessedEmail> findByIdWithRelations(@org.springframework.data.repository.query.Param("id") Long id);
 }

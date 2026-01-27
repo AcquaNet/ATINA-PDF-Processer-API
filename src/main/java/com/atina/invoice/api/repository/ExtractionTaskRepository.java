@@ -25,6 +25,7 @@ public interface ExtractionTaskRepository extends JpaRepository<ExtractionTask, 
     @Query("SELECT t FROM ExtractionTask t " +
            "LEFT JOIN FETCH t.email e " +
            "LEFT JOIN FETCH e.tenant " +
+           "LEFT JOIN FETCH t.attachment " +
            "WHERE t.email.id = :emailId " +
            "ORDER BY t.createdAt ASC")
     List<ExtractionTask> findByEmailIdOrderByCreatedAtAsc(@Param("emailId") Long emailId);

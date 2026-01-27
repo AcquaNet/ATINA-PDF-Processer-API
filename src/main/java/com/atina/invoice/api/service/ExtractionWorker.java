@@ -7,6 +7,7 @@ import com.atina.invoice.api.model.enums.ExtractionStatus;
 import com.atina.invoice.api.repository.ExtractionTaskRepository;
 import com.atina.invoice.api.repository.ExtractionTemplateRepository;
 import com.atina.invoice.api.repository.ProcessedEmailRepository;
+import com.atina.invoice.api.security.TenantContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -163,12 +164,21 @@ public class ExtractionWorker {
             Tenant tenant = email.getTenant();
             ProcessedAttachment attachment = task.getAttachment();
             Long tenantId = tenant.getId();
+            String tenantCode = tenant.getTenantCode();
             String source = task.getSource();
             String pdfPath = task.getPdfPath();
 
+            // ---------------------------------------------------------------------------------------
+            // Set TenantContext for background thread
+            // This allows nested service calls (metrics, webhooks, etc.) to access tenant info
+            // ---------------------------------------------------------------------------------------
+            TenantContext.setTenantId(tenantId);
+            TenantContext.setTenantCode(tenantCode);
+            log.debug("[TASK-{}] Set TenantContext: tenantId={}, tenantCode={}", taskId, tenantId, tenantCode);
+
             log.info("Starting extraction for task:");
 
-            log.info("    Tenant Code: {}",tenant.getTenantCode());
+            log.info("    Tenant Code: {}", tenantCode);
             log.info("    From EMail: {}", email.getFromAddress());
             log.info("    Attacment File: {}", attachment.getNormalizedFilename());
 
@@ -299,7 +309,8 @@ public class ExtractionWorker {
             }
 
         } finally {
-            // Limpiar correlationId del MDC
+            // Limpiar TenantContext y correlationId del MDC
+            TenantContext.clear();
             MDC.remove("correlationId");
         }
     }

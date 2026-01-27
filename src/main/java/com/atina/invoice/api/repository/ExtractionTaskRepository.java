@@ -150,4 +150,13 @@ public interface ExtractionTaskRepository extends JpaRepository<ExtractionTask, 
     @Query("SELECT t FROM ExtractionTask t WHERE t.createdAt >= :since " +
            "ORDER BY t.createdAt DESC")
     List<ExtractionTask> findRecentTasks(@Param("since") Instant since);
+
+    /**
+     * Buscar todas las tareas con un correlationId específico
+     * Útil para troubleshooting y tracking de una tarea específica a través de reintentos
+     *
+     * @param correlationId Correlation ID de la tarea
+     * @return Lista de tareas (normalmente 1, pero puede ser más si hay datos duplicados)
+     */
+    List<ExtractionTask> findByCorrelationId(String correlationId);
 }

@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +26,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 
 /**
  * Worker asíncrono para procesar tareas de extracción de PDFs
@@ -137,33 +139,48 @@ public class ExtractionWorker {
         }
 
         // ---------------------------------------------------------------------------------------
-        // 2. Extraer datos necesarios ANTES de hacer save() (para evitar lazy loading después)
+        // 2. Generar o reutilizar correlationId para tracking
         // ---------------------------------------------------------------------------------------
 
-        ProcessedEmail email = task.getEmail();
-        Tenant tenant = email.getTenant();
-        ProcessedAttachment attachment = task.getAttachment();
-        Long tenantId = tenant.getId();
-        String source = task.getSource();
-        String pdfPath = task.getPdfPath();
+        String correlationId = task.getCorrelationId();
+        if (correlationId == null || correlationId.isBlank()) {
+            correlationId = UUID.randomUUID().toString();
+            task.setCorrelationId(correlationId);
+            log.info("Generated new correlationId for task {}: {}", taskId, correlationId);
+        } else {
+            log.info("Reusing existing correlationId for task {}: {}", taskId, correlationId);
+        }
 
-        log.info("Starting extraction for task:");
-
-        log.info("    Tenant Code: {}",tenant.getTenantCode());
-        log.info("    From EMail: {}", email.getFromAddress());
-        log.info("    Attacment File: {}", attachment.getNormalizedFilename());
-
-        // -----------------------
-        // 3. Mark as processing
-        // -----------------------
-
-        task.markAsProcessing();
-
-        taskRepository.save(task);
-
-        log.info("Marked task as PROCESSING");
+        // Poner correlationId en MDC para que aparezca en todos los logs
+        MDC.put("correlationId", correlationId);
 
         try {
+            // ---------------------------------------------------------------------------------------
+            // 3. Extraer datos necesarios ANTES de hacer save() (para evitar lazy loading después)
+            // ---------------------------------------------------------------------------------------
+
+            ProcessedEmail email = task.getEmail();
+            Tenant tenant = email.getTenant();
+            ProcessedAttachment attachment = task.getAttachment();
+            Long tenantId = tenant.getId();
+            String source = task.getSource();
+            String pdfPath = task.getPdfPath();
+
+            log.info("Starting extraction for task:");
+
+            log.info("    Tenant Code: {}",tenant.getTenantCode());
+            log.info("    From EMail: {}", email.getFromAddress());
+            log.info("    Attacment File: {}", attachment.getNormalizedFilename());
+
+            // -----------------------
+            // 4. Mark as processing
+            // -----------------------
+
+            task.markAsProcessing();
+
+            taskRepository.save(task);
+
+            log.info("Marked task as PROCESSING");
 
             // ----------------------------------------
             // 4. Buscar template para (tenant, source)
@@ -280,6 +297,10 @@ public class ExtractionWorker {
                 log.error("[TASK-{}] Max attempts exceeded, marked as FAILED", task.getId());
                 checkEmailCompletion(task.getEmail());
             }
+
+        } finally {
+            // Limpiar correlationId del MDC
+            MDC.remove("correlationId");
         }
     }
 

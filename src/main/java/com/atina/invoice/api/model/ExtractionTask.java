@@ -55,6 +55,14 @@ public class ExtractionTask {
     private ProcessedEmail email;
 
     /**
+     * Correlation ID para tracking de esta tarea a través de logs
+     * Se genera una vez por tarea y persiste a través de reintentos
+     * Permite correlacionar logs, eventos y resultados de una tarea específica
+     */
+    @Column(name = "correlation_id", length = 100)
+    private String correlationId;
+
+    /**
      * Path al PDF a procesar
      * Copiado de ProcessedAttachment.filePath
      */

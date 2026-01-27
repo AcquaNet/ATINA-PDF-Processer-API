@@ -41,7 +41,16 @@ public class WebhookService {
      */
     @Async
     public void sendExtractionCompletedWebhook(ProcessedEmail email, List<ExtractionTask> tasks) {
+
+        // ---------------------------------------
+        // Obtener URL del webhook del tenant
+        // ---------------------------------------
+
         String webhookUrl = email.getTenant().getWebhookUrl();
+
+        // ---------------------------------------
+        // Si no hay URL configurada, salir
+        // ---------------------------------------
 
         if (webhookUrl == null || webhookUrl.isBlank()) {
             log.debug("No webhook URL configured for tenant: {}", email.getTenant().getTenantCode());
@@ -52,7 +61,10 @@ public class WebhookService {
 
         Map<String, Object> payload = buildWebhookPayload(email, tasks);
 
+        // -------------------------------
         // Enviar con retry logic
+        // -------------------------------
+
         int maxAttempts = properties.getWebhook().getRetryAttempts();
         sendWithRetry(webhookUrl, payload, maxAttempts);
     }
@@ -61,6 +73,8 @@ public class WebhookService {
      * Construir payload del webhook
      */
     private Map<String, Object> buildWebhookPayload(ProcessedEmail email, List<ExtractionTask> tasks) {
+
+
         long completed = tasks.stream()
                 .filter(t -> t.getStatus() == ExtractionStatus.COMPLETED)
                 .count();
@@ -70,6 +84,9 @@ public class WebhookService {
         long cancelled = tasks.stream()
                 .filter(t -> t.getStatus() == ExtractionStatus.CANCELLED)
                 .count();
+
+        int total = tasks != null ? tasks.size() : 0;
+        double successRate = total > 0 ? (completed * 100.0 / total) : 0.0;
 
         Map<String, Object> payload = new HashMap<>();
 
@@ -99,10 +116,24 @@ public class WebhookService {
                 ? (completed * 100.0 / tasks.size())
                 : 0.0);
 
+        // -----------------------------
         // Individual extractions
+        // -----------------------------
         payload.put("extractions", tasks.stream()
                 .map(this::taskToPayload)
                 .collect(Collectors.toList()));
+
+
+        log.info(
+                "Webhook payload built: tenant={} emailId={} correlationId={} totalTasks={} completed={} failed={} cancelled={} successRate={}%",
+                email.getTenant() != null ? email.getTenant().getTenantCode() : null,
+                email.getId(),
+                email.getCorrelationId(),
+                total,
+                completed,
+                failed,
+                cancelled,
+                String.format(java.util.Locale.US, "%.2f", successRate));
 
         return payload;
     }
@@ -111,6 +142,21 @@ public class WebhookService {
      * Convertir task a payload
      */
     private Map<String, Object> taskToPayload(ExtractionTask task) {
+
+        // -----------------------------------------
+        // Campos básicos
+        // -----------------------------------------
+
+        log.info("taskToPayload start: taskId={}, status={}, attempts={}, source={}, originalFilename={}, normalizedFilename={}",
+                task.getId(),
+                task.getStatus(),
+                task.getAttempts(),
+                task.getSource(),
+                task.getAttachment() != null ? task.getAttachment().getOriginalFilename() : null,
+                task.getAttachment() != null ? task.getAttachment().getNormalizedFilename() : null
+        );
+
+
         Map<String, Object> map = new HashMap<>();
 
         map.put("task_id", task.getId());
@@ -128,26 +174,48 @@ public class WebhookService {
                 ? task.getCompletedAt().toString()
                 : null);
 
+        // -----------------------------------------
         // Si completó, incluir datos extraídos
+        // -----------------------------------------
+
         if (task.getStatus() == ExtractionStatus.COMPLETED && task.getRawResult() != null) {
+
+            log.info("taskToPayload: task {} COMPLETED; parsing rawResult. resultPath={}", task.getId(), task.getResultPath());
+
             try {
                 Map<String, Object> extractedData = objectMapper.readValue(
                         task.getRawResult(),
-                        new TypeReference<Map<String, Object>>() {}
+                        new TypeReference<>() {}
                 );
                 map.put("extracted_data", extractedData);
                 map.put("result_path", task.getResultPath());
+
+                log.info("taskToPayload: task {} rawResult parsed OK. extractedKeys={}, extractedSize={}",
+                        task.getId(),
+                        extractedData != null ? extractedData.keySet() : null,
+                        extractedData != null ? extractedData.size() : 0
+                );
+
             } catch (Exception e) {
                 log.warn("Failed to parse extraction result for task {}", task.getId(), e);
                 map.put("extracted_data", null);
                 map.put("result_parse_error", e.getMessage());
+                log.info("taskToPayload: task {} rawResult parsed FAILED. error={}", task.getId(), e.getMessage());
             }
+        } else if (task.getStatus() == ExtractionStatus.COMPLETED) {
+            log.info("taskToPayload: task {} COMPLETED but rawResult is null. resultPath={}", task.getId(), task.getResultPath());
         }
 
+        // -----------------------------------------
         // Si falló, incluir error
+        // -----------------------------------------
+
         if (task.getStatus() == ExtractionStatus.FAILED) {
+            log.info("taskToPayload: task {} FAILED. errorMessage={}", task.getId(), task.getErrorMessage());
             map.put("error_message", task.getErrorMessage());
         }
+
+        log.info("taskToPayload end: taskId={}, payloadKeys={}", task.getId(), map.keySet());
 
         return map;
     }

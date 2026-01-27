@@ -63,6 +63,10 @@ public class ExtractionWorker {
             return;
         }
 
+        // ---------------------------------------------------------------------------------------
+        // Buscar tareas PENDING o RETRYING que deban ejecutarse
+        // ---------------------------------------------------------------------------------------
+
         List<ExtractionTask> tasks = taskRepository.findNextTasksToProcess(Instant.now());
 
         if (tasks.isEmpty()) {
@@ -75,19 +79,37 @@ public class ExtractionWorker {
         int processed = 0;
 
         for (ExtractionTask task : tasks) {
+
             if (processed >= batchSize) {
-                log.debug("Batch size limit reached ({}), stopping", batchSize);
+
+                log.info("Batch size limit reached ({}), stopping", batchSize);
+
                 break;
             }
 
             try {
+
+                // ---------------------------
+                // Procesar tarea individual
+                // ---------------------------
+
                 processTask(task);
+
+                // ------------------------------
+                // Contador de tareas procesadas
+                // ------------------------------
+
                 processed++;
+
             } catch (Exception e) {
                 log.error("Error processing task {}: {}", task.getId(), e.getMessage(), e);
                 handleError(task, e);
             }
         }
+
+        // ------------------------------
+        // Resumen de tareas procesadas
+        // ------------------------------
 
         if (processed > 0) {
             log.info("✅ Processed {} tasks", processed);
@@ -104,14 +126,20 @@ public class ExtractionWorker {
         log.info("🔄 [TASK-{}] Processing extraction task for PDF: {}",
                 taskId, task.getPdfPath());
 
+        // ---------------------------------------------------------------------------------------
         // 1. Re-cargar la tarea con todas sus relaciones para evitar LazyInitializationException
+        // ---------------------------------------------------------------------------------------
+
         task = taskRepository.findByIdWithRelations(taskId);
         if (task == null) {
             log.error("❌ [TASK-{}] Task not found when reloading", taskId);
             return;
         }
 
+        // ---------------------------------------------------------------------------------------
         // 2. Extraer datos necesarios ANTES de hacer save() (para evitar lazy loading después)
+        // ---------------------------------------------------------------------------------------
+
         ProcessedEmail email = task.getEmail();
         Tenant tenant = email.getTenant();
         ProcessedAttachment attachment = task.getAttachment();
@@ -119,12 +147,27 @@ public class ExtractionWorker {
         String source = task.getSource();
         String pdfPath = task.getPdfPath();
 
+        log.info("Starting extraction for task:");
+
+        log.info("    Tenant Code: {}",tenant.getTenantCode());
+        log.info("    From EMail: {}", email.getFromAddress());
+        log.info("    Attacment File: {}", attachment.getNormalizedFilename());
+
+        // -----------------------
         // 3. Mark as processing
+        // -----------------------
+
         task.markAsProcessing();
+
         taskRepository.save(task);
 
+        log.info("Marked task as PROCESSING");
+
         try {
+
+            // ----------------------------------------
             // 4. Buscar template para (tenant, source)
+            // ----------------------------------------
 
             log.info("[TASK-{}] Looking for template: tenant={}, source={}",
                     taskId, tenantId, source);
@@ -140,8 +183,12 @@ public class ExtractionWorker {
                     taskId, templateConfig.getDescription(),
                     templateConfig.getTemplateName(), templateConfig.getFullTemplatePath());
 
+            // ----------------------------------------
             // 5. Cargar PDF como MultipartFile
+            // ----------------------------------------
+
             File pdfFile = new File(pdfPath);
+
             if (!pdfFile.exists()) {
                 throw new FileNotFoundException("PDF file not found: " + pdfPath);
             }
@@ -151,11 +198,18 @@ public class ExtractionWorker {
 
             MultipartFile multipartFile = convertFileToMultipartFile(pdfFile);
 
+            // ---------------------------------------------
             // 6. PDF → JSON interno (usando DoclingService)
+            // ---------------------------------------------
+
             log.info("[TASK-{}] Converting PDF to internal format...", taskId);
+
             JsonNode processedData = doclingService.convertPdf(multipartFile);
 
+            // ------------------------------------------------
             // 7. Cargar template desde filesystem
+            // ------------------------------------------------
+
             String fullTemplatePath = templateConfig.getFullTemplatePath();
             log.info("[TASK-{}] Loading template from: {}",
                     taskId, fullTemplatePath);
@@ -169,7 +223,10 @@ public class ExtractionWorker {
 
             JsonNode template = objectMapper.readTree(templateFile);
 
+            // ------------------------------------------------
             // 8. Extraer datos (usando ExtractionService)
+            // ------------------------------------------------
+
             log.info("[TASK-{}] Extracting data from PDF...", taskId);
 
             ExtractionOptions options = new ExtractionOptions();
@@ -179,23 +236,33 @@ public class ExtractionWorker {
 
             JsonNode result = extractionService.extract(processedData, template, options);
 
+            // ------------------------------------------------
             // 9. Guardar resultado JSON
+            // ------------------------------------------------
+
             String resultJson = objectMapper.writerWithDefaultPrettyPrinter()
                     .writeValueAsString(result);
             String resultPath = saveExtractionResult(tenant, email, attachment, resultJson);
 
             log.info("[TASK-{}] Extraction result saved to: {}", taskId, resultPath);
 
+            // ------------------------------------------------
             // 10. Actualizar tarea como completada
+            // ------------------------------------------------
+
             task.markAsCompleted(resultPath, resultJson);
             taskRepository.save(task);
 
             log.info("✅ [TASK-{}] Extraction completed successfully", taskId);
 
+            // ---------------------------------------------------
             // 11. Verificar si email está completamente procesado
+            // ---------------------------------------------------
+
             checkEmailCompletion(email);
 
         } catch (Exception e) {
+
             log.error("❌ [TASK-{}] Extraction failed: {}", taskId, e.getMessage(), e);
 
             int retryDelay = calculateRetryDelay(task.getAttempts());
@@ -205,7 +272,10 @@ public class ExtractionWorker {
             log.warn("[TASK-{}] Marked for retry (attempts: {}/{}, next retry in {}s)",
                     task.getId(), task.getAttempts(), task.getMaxAttempts(), retryDelay);
 
+            // -----------------------------------------------------------
             // Si ya no se reintentará más, verificar completion del email
+            // -----------------------------------------------------------
+
             if (task.getStatus() == ExtractionStatus.FAILED) {
                 log.error("[TASK-{}] Max attempts exceeded, marked as FAILED", task.getId());
                 checkEmailCompletion(task.getEmail());
@@ -315,18 +385,25 @@ public class ExtractionWorker {
         log.info("✅ [EMAIL-{}] All extraction tasks completed: {}/{} successful, {} failed",
                 emailId, completed, tasks.size(), failed);
 
+        // ------------------------------------------------
         // Enviar webhook si está configurado
+        // ------------------------------------------------
+
         if (properties.getWebhook().isEnabled() &&
             email.getTenant() != null &&
             email.getTenant().getWebhookUrl() != null &&
             !email.getTenant().getWebhookUrl().isBlank()) {
 
             try {
+
                 log.info("[EMAIL-{}] Sending webhook notification", emailId);
                 webhookService.sendExtractionCompletedWebhook(email, tasks);
+
             } catch (Exception e) {
+
                 log.error("[EMAIL-{}] Failed to send webhook: {}",
                         emailId, e.getMessage(), e);
+
             }
         }
 
@@ -358,12 +435,19 @@ public class ExtractionWorker {
      */
     private void handleError(ExtractionTask task, Exception e) {
         try {
+
+            // Re-cargar tarea para evitar problemas de concurrencia
+
             task = taskRepository.findById(task.getId()).orElse(task);
 
+            // Solo marcar para retry si está en PROCESSING
+
             if (task.getStatus() == ExtractionStatus.PROCESSING) {
+
                 int retryDelay = calculateRetryDelay(task.getAttempts());
                 task.markForRetry("Worker error: " + e.getMessage(), retryDelay);
                 taskRepository.save(task);
+
             }
         } catch (Exception ex) {
             log.error("Failed to handle error for task {}", task.getId(), ex);
@@ -376,9 +460,14 @@ public class ExtractionWorker {
      */
     @Scheduled(fixedRate = 3600000) // 1 hour
     public void recoverStuckTasks() {
+
+        // Verificar si el worker está habilitado
+
         if (!properties.getWorker().isEnabled()) {
             return;
         }
+
+        // Buscar tareas atascadas
 
         int thresholdMinutes = properties.getWorker().getStuckTaskThresholdMinutes();
         Instant threshold = Instant.now().minusSeconds(thresholdMinutes * 60L);
@@ -391,7 +480,10 @@ public class ExtractionWorker {
 
         log.warn("⚠️  Found {} stuck tasks, marking for retry", stuckTasks.size());
 
+        // Marcar cada tarea atascada para retry
+
         for (ExtractionTask task : stuckTasks) {
+
             try {
                 log.warn("Recovering stuck task: {} (started at: {})",
                         task.getId(), task.getStartedAt());
@@ -399,6 +491,7 @@ public class ExtractionWorker {
                 int retryDelay = calculateRetryDelay(task.getAttempts());
                 task.markForRetry("Task stuck for more than " + thresholdMinutes + " minutes", retryDelay);
                 taskRepository.save(task);
+
             } catch (Exception e) {
                 log.error("Failed to recover stuck task {}", task.getId(), e);
             }

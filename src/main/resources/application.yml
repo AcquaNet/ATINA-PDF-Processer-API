@@ -241,7 +241,7 @@ extraction:
   # Worker configuration
   worker:
     # Habilitar/deshabilitar el worker de extracción
-    enabled: false
+    enabled: true
     # Intervalo de polling en milisegundos (5000ms = 5 segundos)
     poll-interval-ms: 5000
     # Tamaño del batch (cuántas tareas procesar por ejecución)

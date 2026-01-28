@@ -4,9 +4,11 @@ import com.atina.invoice.api.config.ExtractionProperties;
 import com.atina.invoice.api.dto.request.ExtractionOptions;
 import com.atina.invoice.api.model.*;
 import com.atina.invoice.api.model.enums.ExtractionStatus;
+import com.atina.invoice.api.model.enums.WebhookEventStatus;
 import com.atina.invoice.api.repository.ExtractionTaskRepository;
 import com.atina.invoice.api.repository.ExtractionTemplateRepository;
 import com.atina.invoice.api.repository.ProcessedEmailRepository;
+import com.atina.invoice.api.repository.WebhookEventRepository;
 import com.atina.invoice.api.security.TenantContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,9 +27,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
-import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Worker asíncrono para procesar tareas de extracción de PDFs
@@ -49,6 +50,7 @@ public class ExtractionWorker {
     private final ExtractionTaskRepository taskRepository;
     private final ExtractionTemplateRepository templateRepository;
     private final ProcessedEmailRepository emailRepository;
+    private final WebhookEventRepository webhookEventRepository;
     private final DoclingService doclingService;
     private final ExtractionService extractionService;
     private final WebhookService webhookService;
@@ -282,6 +284,43 @@ public class ExtractionWorker {
 
             log.info("✅ [TASK-{}] Extraction completed successfully", taskId);
 
+            // ========================================
+            // CREAR WEBHOOK EVENT POR PDF (Transactional Outbox)
+            // ========================================
+            if (properties.getWebhook().isEnabled() &&
+                tenant.getWebhookUrl() != null &&
+                !tenant.getWebhookUrl().isBlank()) {
+
+                try {
+                    log.info("[TASK-{}] Creating webhook event for completed task", taskId);
+
+                    // Build task webhook payload
+                    Map<String, Object> payload = buildTaskWebhookPayload(task, email, tenant);
+                    String payloadJson = objectMapper.writeValueAsString(payload);
+
+                    // Create webhook event in SAME TRANSACTION as task save
+                    WebhookEvent event = WebhookEvent.builder()
+                            .tenantId(tenant.getId())
+                            .eventType("extraction_task_completed")
+                            .entityType("ExtractionTask")
+                            .entityId(task.getId())
+                            .payload(payloadJson)
+                            .status(WebhookEventStatus.PENDING)
+                            .attempts(0)
+                            .maxAttempts(properties.getWebhook().getRetryAttempts())
+                            .build();
+
+                    webhookEventRepository.save(event);
+
+                    log.info("✅ [TASK-{}] Webhook event created: {}", taskId, event.getId());
+
+                } catch (Exception e) {
+                    log.error("❌ [TASK-{}] Failed to create webhook event: {}",
+                              taskId, e.getMessage(), e);
+                    // NO lanzar excepción - no queremos hacer rollback de la task
+                }
+            }
+
             // ---------------------------------------------------
             // 11. Verificar si email está completamente procesado
             // ---------------------------------------------------
@@ -427,15 +466,31 @@ public class ExtractionWorker {
             !email.getTenant().getWebhookUrl().isBlank()) {
 
             try {
+                log.info("[EMAIL-{}] Creating CONSOLIDATED webhook event (Transactional Outbox)", emailId);
 
-                log.info("[EMAIL-{}] Sending webhook notification", emailId);
-                webhookService.sendExtractionCompletedWebhook(email, tasks);
+                // Build email-level payload (summary)
+                Map<String, Object> payload = buildEmailWebhookPayload(email, tasks);
+                String payloadJson = objectMapper.writeValueAsString(payload);
+
+                // Create webhook event for email completion
+                WebhookEvent event = WebhookEvent.builder()
+                        .tenantId(email.getTenant().getId())
+                        .eventType("extraction_email_completed")  // Diferente de "extraction_task_completed"
+                        .entityType("ProcessedEmail")
+                        .entityId(email.getId())
+                        .payload(payloadJson)
+                        .status(WebhookEventStatus.PENDING)
+                        .attempts(0)
+                        .maxAttempts(properties.getWebhook().getRetryAttempts())
+                        .build();
+
+                webhookEventRepository.save(event);
+
+                log.info("✅ [EMAIL-{}] Webhook event created: {}", emailId, event.getId());
 
             } catch (Exception e) {
-
-                log.error("[EMAIL-{}] Failed to send webhook: {}",
+                log.error("❌ [EMAIL-{}] Failed to create webhook event: {}",
                         emailId, e.getMessage(), e);
-
             }
         }
 
@@ -528,6 +583,140 @@ public class ExtractionWorker {
                 log.error("Failed to recover stuck task {}", task.getId(), e);
             }
         }
+    }
+
+    // ========================================
+    // Webhook Payload Building Methods
+    // ========================================
+
+    /**
+     * Construir payload del webhook para UN task individual completado
+     */
+    private Map<String, Object> buildTaskWebhookPayload(
+            ExtractionTask task,
+            ProcessedEmail email,
+            Tenant tenant) {
+
+        Map<String, Object> payload = new HashMap<>();
+
+        // Event info
+        payload.put("event_type", "extraction_task_completed");
+        payload.put("timestamp", Instant.now().toString());
+
+        // Email context
+        payload.put("email_id", email.getId());
+        payload.put("email_correlation_id", email.getCorrelationId());
+        payload.put("sender_email", email.getFromAddress());
+        payload.put("subject", email.getSubject());
+
+        // Tenant info
+        payload.put("tenant_id", tenant.getId());
+        payload.put("tenant_code", tenant.getTenantCode());
+
+        // Task info
+        payload.put("task_id", task.getId());
+        payload.put("task_correlation_id", task.getCorrelationId());
+        payload.put("original_filename", task.getAttachment().getOriginalFilename());
+        payload.put("normalized_filename", task.getAttachment().getNormalizedFilename());
+        payload.put("source", task.getSource());
+        payload.put("status", task.getStatus().name());
+
+        // Extraction result
+        if (task.getStatus() == ExtractionStatus.COMPLETED) {
+            payload.put("result_path", task.getResultPath());
+            if (task.getRawResult() != null) {
+                try {
+                    JsonNode result = objectMapper.readTree(task.getRawResult());
+                    payload.put("extracted_data", result);
+                } catch (Exception e) {
+                    log.warn("Failed to parse result for task {}", task.getId());
+                    payload.put("extracted_data", null);
+                    payload.put("parse_error", e.getMessage());
+                }
+            }
+        }
+
+        if (task.getStatus() == ExtractionStatus.FAILED) {
+            payload.put("error_message", task.getErrorMessage());
+        }
+
+        return payload;
+    }
+
+    /**
+     * Construir payload completo del webhook para un email procesado (consolidado)
+     */
+    private Map<String, Object> buildEmailWebhookPayload(ProcessedEmail email, List<ExtractionTask> tasks) {
+        long completed = tasks.stream()
+                .filter(t -> t.getStatus() == ExtractionStatus.COMPLETED)
+                .count();
+        long failed = tasks.stream()
+                .filter(t -> t.getStatus() == ExtractionStatus.FAILED)
+                .count();
+
+        Map<String, Object> payload = new HashMap<>();
+
+        // Event info
+        payload.put("event_type", "extraction_completed");
+        payload.put("timestamp", Instant.now().toString());
+
+        // Email info
+        payload.put("email_id", email.getId());
+        payload.put("correlation_id", email.getCorrelationId());
+        payload.put("sender_email", email.getFromAddress());
+        payload.put("subject", email.getSubject());
+        payload.put("received_date", email.getReceivedDate() != null
+                ? email.getReceivedDate().toString() : null);
+
+        // Tenant info
+        payload.put("tenant_id", email.getTenant().getId());
+        payload.put("tenant_code", email.getTenant().getTenantCode());
+
+        // Extraction stats
+        payload.put("total_files", tasks.size());
+        payload.put("extracted_files", completed);
+        payload.put("failed_files", failed);
+        payload.put("success_rate", tasks.size() > 0
+                ? (completed * 100.0 / tasks.size()) : 0.0);
+
+        // Individual extractions
+        payload.put("extractions", tasks.stream()
+                .map(this::taskToPayloadMap)
+                .collect(Collectors.toList()));
+
+        return payload;
+    }
+
+    /**
+     * Convertir ExtractionTask a Map para el payload del webhook
+     */
+    private Map<String, Object> taskToPayloadMap(ExtractionTask task) {
+        Map<String, Object> map = new HashMap<>();
+
+        map.put("task_id", task.getId());
+        map.put("correlation_id", task.getCorrelationId());
+        map.put("original_filename", task.getAttachment().getOriginalFilename());
+        map.put("normalized_filename", task.getAttachment().getNormalizedFilename());
+        map.put("source", task.getSource());
+        map.put("status", task.getStatus().name());
+
+        if (task.getStatus() == ExtractionStatus.COMPLETED) {
+            map.put("result_path", task.getResultPath());
+            if (task.getRawResult() != null) {
+                try {
+                    JsonNode result = objectMapper.readTree(task.getRawResult());
+                    map.put("extracted_data", result);
+                } catch (Exception e) {
+                    log.warn("Failed to parse result for task {}", task.getId());
+                }
+            }
+        }
+
+        if (task.getStatus() == ExtractionStatus.FAILED) {
+            map.put("error_message", task.getErrorMessage());
+        }
+
+        return map;
     }
 
     /**

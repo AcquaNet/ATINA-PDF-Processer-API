@@ -283,4 +283,37 @@ public class WebhookService {
 
         log.debug("Webhook response: {} - {}", response.getStatusCode(), response.getBody());
     }
+
+    /**
+     * Enviar webhook directamente sin retry interno
+     * Usado por WebhookProcessor que maneja los reintentos via base de datos
+     *
+     * @param url URL del webhook
+     * @param payload Payload ya construido
+     * @throws RuntimeException si el envío falla
+     */
+    public void sendWebhookDirect(String url, Map<String, Object> payload) {
+        try {
+            String payloadJson = objectMapper.writeValueAsString(payload);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("User-Agent", "Atina-Invoice-Extractor/1.0");
+            headers.set("X-Webhook-Event", (String) payload.get("event_type"));
+
+            HttpEntity<String> request = new HttpEntity<>(payloadJson, headers);
+
+            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
+
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                throw new RuntimeException("Webhook returned non-2xx status: " + response.getStatusCode());
+            }
+
+            log.debug("Webhook sent successfully to {}", url);
+
+        } catch (Exception e) {
+            log.error("Webhook request failed: {}", e.getMessage());
+            throw new RuntimeException("Webhook sending failed: " + e.getMessage(), e);
+        }
+    }
 }

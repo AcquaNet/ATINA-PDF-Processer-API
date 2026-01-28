@@ -258,6 +258,8 @@ extraction:
     # Timeout en segundos
     timeout-seconds: 30
     # Número de reintentos
-    retry-attempts: 3
+    retry-attempts: 5
     # Delay entre reintentos en segundos (usa exponential backoff)
     retry-delay-seconds: 60
+    # Intervalo del WebhookProcessor en milisegundos (5000ms = 5 segundos)
+    processor-interval-ms: 5000

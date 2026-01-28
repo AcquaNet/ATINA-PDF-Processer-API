@@ -1,0 +1,429 @@
+#%RAML 1.0
+title: ATINA Invoice Extractor - Webhook API
+version: v1
+baseUri: https://your-client-api.com/api
+mediaType: application/json
+
+documentation:
+  - title: Webhook API Documentation
+    content: |
+      Esta API describe los webhooks que ATINA Invoice Extractor enviará a tu sistema.
+
+      ## Tipos de Webhooks
+
+      El sistema envía 2 tipos de webhooks:
+
+      1. **extraction_task_completed** - Se envía inmediatamente cuando cada PDF individual se procesa
+      2. **extraction_email_completed** - Se envía cuando TODOS los PDFs del email terminan de procesarse
+
+      ## Configuración
+
+      Configura tu webhook URL en el tenant:
+      - PUT /api/v1/tenants/{id}
+      - Campo: `webhookUrl`
+
+      ## Reintentos
+
+      - Reintentos automáticos: 5 intentos
+      - Exponential backoff: 60s, 120s, 240s, 480s, 960s
+      - Timeout: 30 segundos por request
+
+      ## Seguridad
+
+      Los webhooks incluyen estos headers:
+      - `Content-Type: application/json`
+      - `User-Agent: Atina-Invoice-Extractor/1.0`
+      - `X-Webhook-Event: {event_type}`
+
+      ## Idempotencia
+
+      Usa los correlation IDs para garantizar procesamiento idempotente:
+      - `email_correlation_id` - Identifica el email único
+      - `task_correlation_id` - Identifica cada PDF único
+
+types:
+  ExtractionTaskCompletedEvent:
+    type: object
+    properties:
+      event_type:
+        type: string
+        enum: [extraction_task_completed]
+        description: Tipo de evento
+        example: extraction_task_completed
+      timestamp:
+        type: string
+        format: date-time
+        description: Fecha/hora del evento en formato ISO 8601
+        example: "2024-01-28T10:30:00.000Z"
+      email_id:
+        type: integer
+        format: int64
+        description: ID interno del email procesado
+        example: 123
+      email_correlation_id:
+        type: string
+        description: Correlation ID del email (para idempotencia)
+        example: "550e8400-e29b-41d4-a716-446655440000"
+      sender_email:
+        type: string
+        description: Email del remitente
+        example: "vendor@example.com"
+      subject:
+        type: string
+        description: Asunto del email
+        example: "Invoice #INV-2024-001"
+      tenant_id:
+        type: integer
+        format: int64
+        description: ID del tenant
+        example: 1
+      tenant_code:
+        type: string
+        description: Código del tenant
+        example: "ACME"
+      task_id:
+        type: integer
+        format: int64
+        description: ID interno de la tarea de extracción
+        example: 456
+      task_correlation_id:
+        type: string
+        description: Correlation ID de la tarea (para idempotencia)
+        example: "550e8400-e29b-41d4-a716-446655440001"
+      original_filename:
+        type: string
+        description: Nombre original del archivo PDF
+        example: "invoice_001.pdf"
+      normalized_filename:
+        type: string
+        description: Nombre normalizado del archivo
+        example: "invoice_001"
+      source:
+        type: string
+        description: Sistema de origen configurado
+        example: "JDE"
+      status:
+        type: string
+        enum: [COMPLETED, FAILED]
+        description: Estado del procesamiento
+        example: COMPLETED
+      result_path:
+        type: string
+        description: Ruta donde se guardó el resultado JSON (solo si status=COMPLETED)
+        example: "/storage/ACME/2024/01/28/email_123/task_456_result.json"
+        required: false
+      extracted_data:
+        type: object
+        description: Datos extraídos del PDF (solo si status=COMPLETED)
+        required: false
+        example:
+          invoice_number: "INV-2024-001"
+          invoice_date: "2024-01-15"
+          vendor_name: "Example Vendor Inc"
+          total_amount: 1500.00
+          currency: "USD"
+          line_items:
+            - description: "Product A"
+              quantity: 10
+              unit_price: 100.00
+              amount: 1000.00
+            - description: "Product B"
+              quantity: 5
+              unit_price: 100.00
+              amount: 500.00
+      error_message:
+        type: string
+        description: Mensaje de error (solo si status=FAILED)
+        required: false
+        example: "No active template found for tenant=1, source=JDE"
+      parse_error:
+        type: string
+        description: Error al parsear el resultado JSON (raro, solo si hubo problema interno)
+        required: false
+
+  ExtractionEmailCompletedEvent:
+    type: object
+    properties:
+      event_type:
+        type: string
+        enum: [extraction_email_completed]
+        description: Tipo de evento
+        example: extraction_email_completed
+      timestamp:
+        type: string
+        format: date-time
+        description: Fecha/hora del evento en formato ISO 8601
+        example: "2024-01-28T10:35:00.000Z"
+      email_id:
+        type: integer
+        format: int64
+        description: ID interno del email procesado
+        example: 123
+      correlation_id:
+        type: string
+        description: Correlation ID del email (para idempotencia)
+        example: "550e8400-e29b-41d4-a716-446655440000"
+      sender_email:
+        type: string
+        description: Email del remitente
+        example: "vendor@example.com"
+      subject:
+        type: string
+        description: Asunto del email
+        example: "Invoice #INV-2024-001"
+      received_date:
+        type: string
+        format: date-time
+        description: Fecha/hora de recepción del email
+        required: false
+        example: "2024-01-28T10:00:00.000Z"
+      tenant_id:
+        type: integer
+        format: int64
+        description: ID del tenant
+        example: 1
+      tenant_code:
+        type: string
+        description: Código del tenant
+        example: "ACME"
+      total_files:
+        type: integer
+        description: Total de PDFs en el email
+        example: 3
+      extracted_files:
+        type: integer
+        description: PDFs procesados exitosamente
+        example: 2
+      failed_files:
+        type: integer
+        description: PDFs que fallaron
+        example: 1
+      success_rate:
+        type: number
+        format: double
+        description: Tasa de éxito en porcentaje
+        example: 66.67
+      extractions:
+        type: array
+        description: Lista de todas las extracciones (resumen)
+        items:
+          type: object
+          properties:
+            task_id:
+              type: integer
+              format: int64
+              example: 456
+            correlation_id:
+              type: string
+              example: "550e8400-e29b-41d4-a716-446655440001"
+            original_filename:
+              type: string
+              example: "invoice_001.pdf"
+            normalized_filename:
+              type: string
+              example: "invoice_001"
+            source:
+              type: string
+              example: "JDE"
+            status:
+              type: string
+              enum: [COMPLETED, FAILED, CANCELLED]
+              example: COMPLETED
+            result_path:
+              type: string
+              required: false
+              example: "/storage/ACME/2024/01/28/email_123/task_456_result.json"
+            extracted_data:
+              type: object
+              required: false
+              description: Datos extraídos del PDF
+            error_message:
+              type: string
+              required: false
+              example: "No active template found"
+
+/webhooks/extraction:
+  displayName: Webhook Receiver Endpoint
+  description: |
+    Este es el endpoint que debes implementar en tu sistema para recibir webhooks.
+    Configura la URL completa en el tenant (ej: https://your-api.com/webhooks/extraction)
+
+  post:
+    description: |
+      Recibe notificaciones de extracción completada.
+
+      ## Implementación Recomendada
+
+      ```javascript
+      app.post('/webhooks/extraction', async (req, res) => {
+        const event = req.body;
+        const eventType = event.event_type;
+
+        // Responder 200 OK inmediatamente (importante!)
+        res.status(200).send('OK');
+
+        // Procesar de forma asíncrona
+        if (eventType === 'extraction_task_completed') {
+          await handleTaskCompleted(event);
+        } else if (eventType === 'extraction_email_completed') {
+          await handleEmailCompleted(event);
+        }
+      });
+      ```
+
+      ## Importante
+
+      - Responde 200 OK lo más rápido posible (< 5 segundos)
+      - Procesa el webhook de forma asíncrona
+      - Si respondes con error, el sistema reintentará con exponential backoff
+      - Usa los correlation IDs para garantizar idempotencia
+
+    headers:
+      Content-Type:
+        type: string
+        enum: [application/json]
+        example: application/json
+      User-Agent:
+        type: string
+        example: Atina-Invoice-Extractor/1.0
+      X-Webhook-Event:
+        type: string
+        description: Tipo de evento que se está enviando
+        enum: [extraction_task_completed, extraction_email_completed]
+        example: extraction_task_completed
+
+    body:
+      application/json:
+        type: ExtractionTaskCompletedEvent | ExtractionEmailCompletedEvent
+        examples:
+          task_completed_success:
+            displayName: Task Completed (Success)
+            description: Webhook enviado cuando un PDF individual se procesa exitosamente
+            value:
+              event_type: extraction_task_completed
+              timestamp: "2024-01-28T10:30:00.000Z"
+              email_id: 123
+              email_correlation_id: "550e8400-e29b-41d4-a716-446655440000"
+              sender_email: "vendor@example.com"
+              subject: "Invoice #INV-2024-001"
+              tenant_id: 1
+              tenant_code: "ACME"
+              task_id: 456
+              task_correlation_id: "550e8400-e29b-41d4-a716-446655440001"
+              original_filename: "invoice_001.pdf"
+              normalized_filename: "invoice_001"
+              source: "JDE"
+              status: COMPLETED
+              result_path: "/storage/ACME/2024/01/28/email_123/task_456_result.json"
+              extracted_data:
+                invoice_number: "INV-2024-001"
+                invoice_date: "2024-01-15"
+                vendor_name: "Example Vendor Inc"
+                vendor_address: "123 Business St, City, State 12345"
+                vendor_tax_id: "12-3456789"
+                total_amount: 1500.00
+                subtotal: 1500.00
+                tax_amount: 0.00
+                currency: "USD"
+                payment_terms: "Net 30"
+                due_date: "2024-02-14"
+                line_items:
+                  - line_number: 1
+                    description: "Product A"
+                    quantity: 10
+                    unit_price: 100.00
+                    amount: 1000.00
+                  - line_number: 2
+                    description: "Product B"
+                    quantity: 5
+                    unit_price: 100.00
+                    amount: 500.00
+
+          task_completed_failed:
+            displayName: Task Completed (Failed)
+            description: Webhook enviado cuando un PDF individual falla al procesarse
+            value:
+              event_type: extraction_task_completed
+              timestamp: "2024-01-28T10:31:00.000Z"
+              email_id: 123
+              email_correlation_id: "550e8400-e29b-41d4-a716-446655440000"
+              sender_email: "vendor@example.com"
+              subject: "Invoice #INV-2024-001"
+              tenant_id: 1
+              tenant_code: "ACME"
+              task_id: 457
+              task_correlation_id: "550e8400-e29b-41d4-a716-446655440002"
+              original_filename: "invoice_002.pdf"
+              normalized_filename: "invoice_002"
+              source: "JDE"
+              status: FAILED
+              error_message: "No active template found for tenant=1, source=JDE"
+
+          email_completed:
+            displayName: Email Completed (Consolidated)
+            description: Webhook enviado cuando TODOS los PDFs del email terminan (éxito o falla)
+            value:
+              event_type: extraction_email_completed
+              timestamp: "2024-01-28T10:35:00.000Z"
+              email_id: 123
+              correlation_id: "550e8400-e29b-41d4-a716-446655440000"
+              sender_email: "vendor@example.com"
+              subject: "Invoice #INV-2024-001"
+              received_date: "2024-01-28T10:00:00.000Z"
+              tenant_id: 1
+              tenant_code: "ACME"
+              total_files: 3
+              extracted_files: 2
+              failed_files: 1
+              success_rate: 66.67
+              extractions:
+                - task_id: 456
+                  correlation_id: "550e8400-e29b-41d4-a716-446655440001"
+                  original_filename: "invoice_001.pdf"
+                  normalized_filename: "invoice_001"
+                  source: "JDE"
+                  status: COMPLETED
+                  result_path: "/storage/ACME/2024/01/28/email_123/task_456_result.json"
+                  extracted_data:
+                    invoice_number: "INV-2024-001"
+                    total_amount: 1500.00
+                - task_id: 457
+                  correlation_id: "550e8400-e29b-41d4-a716-446655440002"
+                  original_filename: "invoice_002.pdf"
+                  normalized_filename: "invoice_002"
+                  source: "JDE"
+                  status: COMPLETED
+                  result_path: "/storage/ACME/2024/01/28/email_123/task_457_result.json"
+                  extracted_data:
+                    invoice_number: "INV-2024-002"
+                    total_amount: 2500.00
+                - task_id: 458
+                  correlation_id: "550e8400-e29b-41d4-a716-446655440003"
+                  original_filename: "invoice_003.pdf"
+                  normalized_filename: "invoice_003"
+                  source: "JDE"
+                  status: FAILED
+                  error_message: "No active template found for tenant=1, source=JDE"
+
+    responses:
+      200:
+        description: |
+          Webhook recibido y procesado exitosamente.
+          Tu servidor DEBE responder con 200 OK para confirmar recepción.
+        body:
+          text/plain:
+            example: OK
+
+      4xx:
+        description: |
+          Error del cliente. El sistema reintentará el webhook.
+          - Reintento 1: 60 segundos después
+          - Reintento 2: 120 segundos después
+          - Reintento 3: 240 segundos después
+          - Reintento 4: 480 segundos después
+          - Reintento 5: 960 segundos después (último intento)
+
+      5xx:
+        description: |
+          Error del servidor. El sistema reintentará el webhook.
+          Aplican las mismas reglas de reintentos que para 4xx.

@@ -133,11 +133,19 @@ public class EmailNotificationService {
         }
 
         try {
+
             log.info("Sending processed email notification for email {} (tenant: {}, tasks: {})",
                     email.getId(), email.getTenant().getTenantCode(), tasks.size());
 
             // Build template variables
             Map<String, Object> vars = buildProcessedEmailVars(email, tasks);
+
+            log.info("Template vars for processed email (emailId={}, tenant={}): keys={}, vars={}",
+                    email.getId(),
+                    email.getTenant().getTenantCode(),
+                    vars != null ? vars.keySet() : null,
+                    vars
+            );
 
             // Load and render template
             String templateContent = loadTemplate(email.getTenant(), rule.getTemplateEmailProcessed());
@@ -252,7 +260,7 @@ public class EmailNotificationService {
     private Map<String, Object> taskToEmailSummary(ExtractionTask task) {
         Map<String, Object> summary = new HashMap<>();
 
-        summary.put("filename", task.getAttachment().getNormalizedFilename());
+        summary.put("filename", task.getAttachment().getOriginalFilename());
         summary.put("status", task.getStatus().name());
         summary.put("success", task.getStatus() == ExtractionStatus.COMPLETED);
 

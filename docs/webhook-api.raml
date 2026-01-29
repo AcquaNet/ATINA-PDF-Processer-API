@@ -114,23 +114,11 @@ types:
         required: false
       extracted_data:
         type: object
-        description: Datos extraídos del PDF (solo si status=COMPLETED)
+        description: |
+          Datos extraídos del PDF según el template configurado (solo si status=COMPLETED).
+          La estructura del JSON depende del template de extracción que hayas configurado.
+          Puede contener cualquier campo definido en tu template.
         required: false
-        example:
-          invoice_number: "INV-2024-001"
-          invoice_date: "2024-01-15"
-          vendor_name: "Example Vendor Inc"
-          total_amount: 1500.00
-          currency: "USD"
-          line_items:
-            - description: "Product A"
-              quantity: 10
-              unit_price: 100.00
-              amount: 1000.00
-            - description: "Product B"
-              quantity: 5
-              unit_price: 100.00
-              amount: 500.00
       error_message:
         type: string
         description: Mensaje de error (solo si status=FAILED)
@@ -236,7 +224,7 @@ types:
             extracted_data:
               type: object
               required: false
-              description: Datos extraídos del PDF
+              description: Datos extraídos del PDF según el template configurado. La estructura varía según tu configuración.
             error_message:
               type: string
               required: false
@@ -316,28 +304,13 @@ types:
               status: COMPLETED
               result_path: "/storage/ACME/2024/01/28/email_123/task_456_result.json"
               extracted_data:
-                invoice_number: "INV-2024-001"
-                invoice_date: "2024-01-15"
-                vendor_name: "Example Vendor Inc"
-                vendor_address: "123 Business St, City, State 12345"
-                vendor_tax_id: "12-3456789"
-                total_amount: 1500.00
-                subtotal: 1500.00
-                tax_amount: 0.00
-                currency: "USD"
-                payment_terms: "Net 30"
-                due_date: "2024-02-14"
-                line_items:
-                  - line_number: 1
-                    description: "Product A"
-                    quantity: 10
-                    unit_price: 100.00
-                    amount: 1000.00
-                  - line_number: 2
-                    description: "Product B"
-                    quantity: 5
-                    unit_price: 100.00
-                    amount: 500.00
+                # La estructura del JSON depende del template de extracción configurado
+                # Este objeto contendrá los campos definidos en tu template
+                # Ejemplo: podría tener campos como document_number, date, amount, etc.
+                field1: "value1"
+                field2: "value2"
+                nested_field:
+                  subfield1: "value"
 
           task_completed_failed:
             displayName: Task Completed (Failed)
@@ -385,8 +358,8 @@ types:
                   status: COMPLETED
                   result_path: "/storage/ACME/2024/01/28/email_123/task_456_result.json"
                   extracted_data:
-                    invoice_number: "INV-2024-001"
-                    total_amount: 1500.00
+                    # Estructura definida por tu template de extracción
+                    field_example: "value"
                 - task_id: 457
                   correlation_id: "550e8400-e29b-41d4-a716-446655440002"
                   original_filename: "invoice_002.pdf"
@@ -395,8 +368,8 @@ types:
                   status: COMPLETED
                   result_path: "/storage/ACME/2024/01/28/email_123/task_457_result.json"
                   extracted_data:
-                    invoice_number: "INV-2024-002"
-                    total_amount: 2500.00
+                    # Estructura definida por tu template de extracción
+                    field_example: "value"
                 - task_id: 458
                   correlation_id: "550e8400-e29b-41d4-a716-446655440003"
                   original_filename: "invoice_003.pdf"

@@ -623,7 +623,6 @@ public class ExtractionWorker {
 
         // Extraction result
         if (task.getStatus() == ExtractionStatus.COMPLETED) {
-            payload.put("result_path", task.getResultPath());
             if (task.getRawResult() != null) {
                 try {
                     JsonNode result = objectMapper.readTree(task.getRawResult());
@@ -701,7 +700,6 @@ public class ExtractionWorker {
         map.put("status", task.getStatus().name());
 
         if (task.getStatus() == ExtractionStatus.COMPLETED) {
-            map.put("result_path", task.getResultPath());
             if (task.getRawResult() != null) {
                 try {
                     JsonNode result = objectMapper.readTree(task.getRawResult());

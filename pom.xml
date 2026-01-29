@@ -192,9 +192,19 @@
         </dependency>
 
         <!-- ========================================
+             HTTP CLIENT (for SSL/HTTPS webhook support)
+             ======================================== -->
+
+        <!-- Apache HttpClient 5 for SSL support -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+        </dependency>
+
+        <!-- ========================================
              UTILITIES
              ======================================== -->
-        
+
         <!-- Lombok (reduce boilerplate) -->
         <dependency>
             <groupId>org.projectlombok</groupId>

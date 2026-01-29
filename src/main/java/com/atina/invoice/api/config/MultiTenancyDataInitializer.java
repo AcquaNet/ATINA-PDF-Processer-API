@@ -163,6 +163,7 @@ public class MultiTenancyDataInitializer {
                             .maxApiCallsPerMonth(maxApiCallsPerMonth)
                             .maxStorageMb(maxStorageMb)
                             .enabled(true)
+                            .webhookUrl("https://localhost:8082/api/v1/webhooks/extraction")
                             .createdAt(Instant.now())
                             .updatedAt(Instant.now())
                             .build();

@@ -107,11 +107,6 @@ types:
         enum: [COMPLETED, FAILED]
         description: Estado del procesamiento
         example: COMPLETED
-      result_path:
-        type: string
-        description: Ruta donde se guardó el resultado JSON (solo si status=COMPLETED)
-        example: "/storage/ACME/2024/01/28/email_123/task_456_result.json"
-        required: false
       extracted_data:
         type: object
         description: |
@@ -217,10 +212,6 @@ types:
               type: string
               enum: [COMPLETED, FAILED, CANCELLED]
               example: COMPLETED
-            result_path:
-              type: string
-              required: false
-              example: "/storage/ACME/2024/01/28/email_123/task_456_result.json"
             extracted_data:
               type: object
               required: false
@@ -302,7 +293,6 @@ types:
               normalized_filename: "invoice_001"
               source: "JDE"
               status: COMPLETED
-              result_path: "/storage/ACME/2024/01/28/email_123/task_456_result.json"
               extracted_data:
                 # La estructura del JSON depende del template de extracción configurado
                 # Este objeto contendrá los campos definidos en tu template
@@ -356,7 +346,6 @@ types:
                   normalized_filename: "invoice_001"
                   source: "JDE"
                   status: COMPLETED
-                  result_path: "/storage/ACME/2024/01/28/email_123/task_456_result.json"
                   extracted_data:
                     # Estructura definida por tu template de extracción
                     field_example: "value"
@@ -366,7 +355,6 @@ types:
                   normalized_filename: "invoice_002"
                   source: "JDE"
                   status: COMPLETED
-                  result_path: "/storage/ACME/2024/01/28/email_123/task_457_result.json"
                   extracted_data:
                     # Estructura definida por tu template de extracción
                     field_example: "value"

@@ -8,28 +8,27 @@ import org.apache.hc.client5.http.ssl.NoopHostnameVerifier;
 import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactory;
 import org.apache.hc.client5.http.ssl.TrustAllStrategy;
 import org.apache.hc.core5.ssl.SSLContextBuilder;
-import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 
 import javax.net.ssl.SSLContext;
-import java.time.Duration;
 
 /**
- * RestTemplate configuration with HTTP and HTTPS support
- * Configures HTTP client for external API calls including webhook delivery
+ * RestClient configuration with HTTP and HTTPS support
  *
- * SECURITY NOTE: This configuration accepts all SSL certificates (including self-signed ones)
- * which is suitable for development and testing. For production, consider using proper
- * certificate validation or configure specific trusted certificates.
+ * Uses Apache HttpClient 5 as the underlying HTTP client for proper SSL support
+ * including self-signed certificate acceptance and hostname verification bypass.
+ *
+ * SECURITY NOTE: Accepts all SSL certificates (including self-signed)
+ * Suitable for development/testing. For production, consider proper certificate validation.
  */
 @Configuration
-public class RestTemplateConfig {
+public class RestClientConfig {
 
     /**
-     * Create RestTemplate bean with HTTP and HTTPS support
+     * Create RestClient bean with HTTP and HTTPS support
      *
      * Features:
      * - Supports both HTTP and HTTPS protocols
@@ -38,11 +37,12 @@ public class RestTemplateConfig {
      * - Connection pooling for better performance
      * - Configurable timeouts
      *
-     * @return RestTemplate configured for HTTP/HTTPS
+     * @param builder RestClient.Builder injected by Spring
+     * @return RestClient configured for HTTP/HTTPS
      * @throws Exception if SSL context creation fails
      */
     @Bean
-    public RestTemplate restTemplate() throws Exception {
+    public RestClient restClient(RestClient.Builder builder) throws Exception {
         // Create SSL context that trusts all certificates
         SSLContext sslContext = SSLContextBuilder.create()
                 .loadTrustMaterial(new TrustAllStrategy())
@@ -65,16 +65,14 @@ public class RestTemplateConfig {
                 .setConnectionManager(connectionManager)
                 .build();
 
-        // Create request factory with HTTP client and set all timeouts directly
+        // Create request factory with Apache HttpClient 5
         HttpComponentsClientHttpRequestFactory requestFactory =
                 new HttpComponentsClientHttpRequestFactory(httpClient);
+        requestFactory.setConnectTimeout(30000);
+        requestFactory.setConnectionRequestTimeout(30000);
 
-        requestFactory.setConnectTimeout(30000); // 30 seconds
-        requestFactory.setConnectionRequestTimeout(30000); // 30 seconds
-
-        // Create RestTemplate with the request factory
-        RestTemplate restTemplate = new RestTemplate(requestFactory);
-
-        return restTemplate;
+        return builder
+                .requestFactory(requestFactory)
+                .build();
     }
 }

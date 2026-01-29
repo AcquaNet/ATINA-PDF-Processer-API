@@ -11,7 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -29,7 +29,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class WebhookService {
 
-    private final RestTemplate restTemplate;
+    private final RestClient restClient;
     private final ObjectMapper objectMapper;
     private final ExtractionProperties properties;
 
@@ -259,29 +259,21 @@ public class WebhookService {
      * Enviar request HTTP POST del webhook
      */
     private void sendWebhookRequest(String url, Map<String, Object> payload) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        try {
+            String response = restClient.post()
+                    .uri(url)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header("User-Agent", "Atina-Invoice-Extractor/1.0")
+                    .header("X-Webhook-Event", (String) payload.get("event_type"))
+                    .body(payload)
+                    .retrieve()
+                    .body(String.class);
 
-        HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
+            log.debug("Webhook response: {}", response);
 
-        int timeout = properties.getWebhook().getTimeoutSeconds() * 1000;
-
-        // TODO: Configurar timeout en RestTemplate si es necesario
-
-        ResponseEntity<String> response = restTemplate.exchange(
-                url,
-                HttpMethod.POST,
-                request,
-                String.class
-        );
-
-        if (!response.getStatusCode().is2xxSuccessful()) {
-            throw new RuntimeException(
-                    "Webhook returned non-2xx status: " + response.getStatusCode()
-            );
+        } catch (Exception e) {
+            throw new RuntimeException("Webhook request failed: " + e.getMessage(), e);
         }
-
-        log.debug("Webhook response: {} - {}", response.getStatusCode(), response.getBody());
     }
 
     /**
@@ -294,20 +286,14 @@ public class WebhookService {
      */
     public void sendWebhookDirect(String url, Map<String, Object> payload) {
         try {
-            String payloadJson = objectMapper.writeValueAsString(payload);
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("User-Agent", "Atina-Invoice-Extractor/1.0");
-            headers.set("X-Webhook-Event", (String) payload.get("event_type"));
-
-            HttpEntity<String> request = new HttpEntity<>(payloadJson, headers);
-
-            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
-
-            if (!response.getStatusCode().is2xxSuccessful()) {
-                throw new RuntimeException("Webhook returned non-2xx status: " + response.getStatusCode());
-            }
+            String response = restClient.post()
+                    .uri(url)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header("User-Agent", "Atina-Invoice-Extractor/1.0")
+                    .header("X-Webhook-Event", (String) payload.get("event_type"))
+                    .body(payload)
+                    .retrieve()
+                    .body(String.class);
 
             log.debug("Webhook sent successfully to {}", url);
 

@@ -192,7 +192,7 @@
         </dependency>
 
         <!-- ========================================
-             HTTP CLIENT (for SSL/HTTPS webhook support)
+             HTTP CLIENT (for SSL/HTTPS support)
              ======================================== -->
 
         <!-- Apache HttpClient 5 for SSL support -->

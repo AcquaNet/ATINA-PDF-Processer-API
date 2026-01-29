@@ -10,7 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -26,7 +26,7 @@ import java.util.Base64;
 @RequiredArgsConstructor
 public class DoclingService {
 
-    private final RestTemplate restTemplate;
+    private final RestClient restClient;
     private final ObjectMapper objectMapper;
 
     @Value("${docling.host:docling.localhost}")
@@ -75,25 +75,17 @@ public class DoclingService {
 
         log.debug("Request body size: {} bytes", requestBody.toString().length());
 
-        // Build headers with Basic Auth
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBasicAuth(doclingUser, doclingPass);
-
-        HttpEntity<ObjectNode> requestEntity = new HttpEntity<>(requestBody, headers);
-
         try {
-            ResponseEntity<String> response = restTemplate.exchange(
-                    endpoint,
-                    HttpMethod.POST,
-                    requestEntity,
-                    String.class
-            );
+            String jsonResponse = restClient.post()
+                    .uri(endpoint)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .headers(headers -> headers.setBasicAuth(doclingUser, doclingPass))
+                    .body(requestBody)
+                    .retrieve()
+                    .body(String.class);
 
-            if (response.getStatusCode() == HttpStatus.OK) {
-                String jsonResponse = response.getBody();
-                log.debug("Docling API response: {} chars",
-                        jsonResponse != null ? jsonResponse.length() : 0);
+            if (jsonResponse != null) {
+                log.debug("Docling API response: {} chars", jsonResponse.length());
 
                 // Parse response and extract document
                 JsonNode responseJson = objectMapper.readTree(jsonResponse);
@@ -103,7 +95,7 @@ public class DoclingService {
                 return extractDoclingJson(responseJson);
 
             } else {
-                throw new DoclingException("Docling API error: " + response.getStatusCode());
+                throw new DoclingException("Docling API returned null response");
             }
 
         } catch (Exception e) {

@@ -52,7 +52,7 @@ types:
         example: extraction_task_completed
       timestamp:
         type: string
-        format: date-time
+        format: datetime
         description: Fecha/hora del evento en formato ISO 8601
         example: "2024-01-28T10:30:00.000Z"
       email_id:
@@ -134,7 +134,7 @@ types:
         example: extraction_email_completed
       timestamp:
         type: string
-        format: date-time
+        format: datetime
         description: Fecha/hora del evento en formato ISO 8601
         example: "2024-01-28T10:35:00.000Z"
       email_id:
@@ -156,7 +156,7 @@ types:
         example: "Invoice #INV-2024-001"
       received_date:
         type: string
-        format: date-time
+        format: datetime
         description: Fecha/hora de recepción del email
         required: false
         example: "2024-01-28T10:00:00.000Z"

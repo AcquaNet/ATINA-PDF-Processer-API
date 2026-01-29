@@ -276,6 +276,31 @@ public class ExtractionWorker {
             log.info("[TASK-{}] Extraction result saved to: {}", taskId, resultPath);
 
             // ------------------------------------------------
+            // 9b. Verificar validaciones de extracción
+            // ------------------------------------------------
+            JsonNode validations = result.get("validations");
+            if (validations != null && validations.isArray() && validations.size() > 0) {
+                StringBuilder validationErrors = new StringBuilder("Extraction validation failed: ");
+                for (JsonNode v : validations) {
+                    String path = v.has("path") ? v.get("path").asText() : "";
+                    String type = v.has("type") ? v.get("type").asText() : "";
+                    String message = v.has("message") ? v.get("message").asText() : "";
+                    validationErrors.append(String.format("[%s/%s: %s] ", path, type, message));
+                }
+
+                log.warn("[TASK-{}] Extraction has {} validation error(s): {}",
+                        taskId, validations.size(), validationErrors);
+
+                task.markAsFailed(validationErrors.toString().trim());
+                task.setResultPath(resultPath);
+                task.setRawResult(resultJson);
+                taskRepository.save(task);
+
+                checkEmailCompletion(email);
+                return;
+            }
+
+            // ------------------------------------------------
             // 10. Actualizar tarea como completada
             // ------------------------------------------------
 

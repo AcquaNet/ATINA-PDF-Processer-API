@@ -1,5 +1,6 @@
 package com.atina.invoice.api.controller;
 
+import com.atina.invoice.api.dto.response.ApiResponse;
 import com.atina.invoice.api.model.*;
 import com.atina.invoice.api.model.enums.NotificationEvent;
 import com.atina.invoice.api.repository.ExtractionTaskRepository;
@@ -7,8 +8,12 @@ import com.atina.invoice.api.repository.ProcessedEmailRepository;
 import com.atina.invoice.api.repository.WebhookCallbackResponseRepository;
 import com.atina.invoice.api.service.NotificationDispatcher;
 import com.atina.invoice.api.service.notification.NotificationContext;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,6 +24,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/webhook-callback")
 @RequiredArgsConstructor
+@Tag(name = "Webhook Callback", description = "External webhook callback endpoint")
+@SecurityRequirement(name = "bearer-jwt")
 public class WebhookCallbackController {
 
     private final ProcessedEmailRepository processedEmailRepository;
@@ -27,7 +34,14 @@ public class WebhookCallbackController {
     private final NotificationDispatcher notificationDispatcher;
 
     @PostMapping
+    @Operation(
+            summary = "Receive webhook callback",
+            description = "Receive an external webhook callback and dispatch notifications"
+    )
     public ResponseEntity<?> receiveCallback(@RequestBody Map<String, Object> body) {
+
+        long start = System.currentTimeMillis();
+
         String correlationId = (String) body.get("correlation_id");
         String status = (String) body.get("status");
         String reference = (String) body.get("reference");
@@ -89,9 +103,12 @@ public class WebhookCallbackController {
 
         notificationDispatcher.dispatch(NotificationEvent.WEBHOOK_CALLBACK, ctx);
 
-        return ResponseEntity.ok(Map.of(
-                "message", "Callback received",
-                "correlation_id", correlationId
+        long duration = System.currentTimeMillis() - start;
+
+        return ResponseEntity.ok(ApiResponse.success(
+                Map.of("message", "Callback received", "correlation_id", correlationId),
+                MDC.get("correlationId"),
+                duration
         ));
     }
 }

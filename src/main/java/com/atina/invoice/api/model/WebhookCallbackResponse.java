@@ -29,6 +29,9 @@ public class WebhookCallbackResponse {
     @Column(name = "correlation_id", nullable = false)
     private String correlationId;
 
+    @Column(name = "task_correlation_id", length = 100)
+    private String taskCorrelationId;
+
     @Column(name = "status", nullable = false, length = 50)
     private String status;
 

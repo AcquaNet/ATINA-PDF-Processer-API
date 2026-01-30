@@ -17,6 +17,7 @@ import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -36,20 +37,25 @@ public class WebhookCallbackController {
     @PostMapping
     @Operation(
             summary = "Receive webhook callback",
-            description = "Receive an external webhook callback and dispatch notifications"
+            description = "Receive an external webhook callback and dispatch notifications. " +
+                    "Supports email-level callbacks (correlation_id), task-level callbacks (task_correlation_id), or both."
     )
     public ResponseEntity<?> receiveCallback(@RequestBody Map<String, Object> body) {
 
         long start = System.currentTimeMillis();
 
         String correlationId = (String) body.get("correlation_id");
+        String taskCorrelationId = (String) body.get("task_correlation_id");
         String status = (String) body.get("status");
         String reference = (String) body.get("reference");
         String message = (String) body.get("message");
 
-        if (correlationId == null || correlationId.isBlank()) {
+        boolean hasCorrelationId = correlationId != null && !correlationId.isBlank();
+        boolean hasTaskCorrelationId = taskCorrelationId != null && !taskCorrelationId.isBlank();
+
+        if (!hasCorrelationId && !hasTaskCorrelationId) {
             return ResponseEntity.badRequest()
-                    .body(Map.of("error", "correlation_id is required"));
+                    .body(Map.of("error", "correlation_id or task_correlation_id is required"));
         }
 
         if (status == null || status.isBlank()) {
@@ -57,28 +63,62 @@ public class WebhookCallbackController {
                     .body(Map.of("error", "status is required"));
         }
 
-        log.info("Received webhook callback: correlationId={}, status={}", correlationId, status);
+        ProcessedEmail email = null;
+        ExtractionTask task = null;
 
-        // Find the ProcessedEmail by correlationId
-        ProcessedEmail email = processedEmailRepository.findByCorrelationId(correlationId)
-                .orElse(null);
+        // Task-level callback: resolve task and its email
+        if (hasTaskCorrelationId) {
+            log.info("Received webhook callback: taskCorrelationId={}, status={}", taskCorrelationId, status);
 
-        if (email == null) {
-            return ResponseEntity.notFound().build();
+            List<ExtractionTask> tasks = extractionTaskRepository.findByCorrelationId(taskCorrelationId);
+            if (tasks.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+            task = tasks.get(0);
+
+            // Load task with relations (email, tenant)
+            task = extractionTaskRepository.findByIdWithRelations(task.getId());
+            if (task == null || task.getEmail() == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            email = task.getEmail();
+
+            // If correlation_id was also provided, validate it matches
+            if (hasCorrelationId && !correlationId.equals(email.getCorrelationId())) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "correlation_id does not match the email associated with task_correlation_id"));
+            }
+
+            // Set correlationId from the resolved email
+            correlationId = email.getCorrelationId();
         }
 
-        // Reload with relations (tenant, senderRule)
-        email = processedEmailRepository.findByIdWithRelations(email.getId())
-                .orElse(null);
+        // Email-level callback (or already resolved from task)
+        if (email == null && hasCorrelationId) {
+            log.info("Received webhook callback: correlationId={}, status={}", correlationId, status);
 
-        if (email == null) {
-            return ResponseEntity.notFound().build();
+            email = processedEmailRepository.findByCorrelationId(correlationId)
+                    .orElse(null);
+
+            if (email == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            // Reload with relations (tenant, senderRule)
+            email = processedEmailRepository.findByIdWithRelations(email.getId())
+                    .orElse(null);
+
+            if (email == null) {
+                return ResponseEntity.notFound().build();
+            }
         }
 
         // Save callback response
         WebhookCallbackResponse callbackResponse = WebhookCallbackResponse.builder()
                 .tenant(email.getTenant())
                 .correlationId(correlationId)
+                .taskCorrelationId(hasTaskCorrelationId ? taskCorrelationId : null)
                 .status(status)
                 .reference(reference)
                 .message(message)
@@ -86,7 +126,8 @@ public class WebhookCallbackController {
 
         callbackResponse = callbackResponseRepository.save(callbackResponse);
 
-        log.info("Webhook callback saved: id={}, correlationId={}", callbackResponse.getId(), correlationId);
+        log.info("Webhook callback saved: id={}, correlationId={}, taskCorrelationId={}",
+                callbackResponse.getId(), correlationId, taskCorrelationId);
 
         // Load extraction tasks for the email
         List<ExtractionTask> tasks = extractionTaskRepository
@@ -105,8 +146,15 @@ public class WebhookCallbackController {
 
         long duration = System.currentTimeMillis() - start;
 
+        Map<String, Object> responseData = new HashMap<>();
+        responseData.put("message", "Callback received");
+        responseData.put("correlation_id", correlationId);
+        if (hasTaskCorrelationId) {
+            responseData.put("task_correlation_id", taskCorrelationId);
+        }
+
         return ResponseEntity.ok(ApiResponse.success(
-                Map.of("message", "Callback received", "correlation_id", correlationId),
+                responseData,
                 MDC.get("correlationId"),
                 duration
         ));

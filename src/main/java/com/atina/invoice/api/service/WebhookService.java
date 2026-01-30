@@ -91,7 +91,7 @@ public class WebhookService {
         Map<String, Object> payload = new HashMap<>();
 
         // Event info
-        payload.put("event_type", "extraction_completed");
+        payload.put("event_type", "extraction_email_completed");
         payload.put("timestamp", Instant.now().toString());
 
         // Email info
@@ -102,10 +102,6 @@ public class WebhookService {
         payload.put("received_date", email.getReceivedDate() != null
                 ? email.getReceivedDate().toString()
                 : null);
-
-        // Tenant info
-        payload.put("tenant_id", email.getTenant().getId());
-        payload.put("tenant_code", email.getTenant().getTenantCode());
 
         // Extraction stats
         payload.put("total_files", tasks.size());
@@ -295,7 +291,7 @@ public class WebhookService {
                     .retrieve()
                     .body(String.class);
 
-            log.debug("Webhook sent successfully to {}", url);
+            log.info("Webhook sent successfully to {}", url);
 
         } catch (Exception e) {
             log.error("Webhook request failed: {}", e.getMessage());

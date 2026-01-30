@@ -679,11 +679,7 @@ public class ExtractionWorker {
         payload.put("email_correlation_id", email.getCorrelationId());
         payload.put("sender_email", email.getFromAddress());
         payload.put("subject", email.getSubject());
-
-        // Tenant info
-        payload.put("tenant_id", tenant.getId());
-        payload.put("tenant_code", tenant.getTenantCode());
-
+        
         // Task info
         payload.put("task_id", task.getId());
         payload.put("task_correlation_id", task.getCorrelationId());
@@ -727,7 +723,7 @@ public class ExtractionWorker {
         Map<String, Object> payload = new HashMap<>();
 
         // Event info
-        payload.put("event_type", "extraction_completed");
+        payload.put("event_type", "extraction_email_completed");
         payload.put("timestamp", Instant.now().toString());
 
         // Email info
@@ -737,10 +733,6 @@ public class ExtractionWorker {
         payload.put("subject", email.getSubject());
         payload.put("received_date", email.getReceivedDate() != null
                 ? email.getReceivedDate().toString() : null);
-
-        // Tenant info
-        payload.put("tenant_id", email.getTenant().getId());
-        payload.put("tenant_code", email.getTenant().getTenantCode());
 
         // Extraction stats
         payload.put("total_files", tasks.size());

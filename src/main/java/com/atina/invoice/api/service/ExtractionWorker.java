@@ -279,8 +279,11 @@ public class ExtractionWorker {
             // 9b. Verificar validaciones de extracción
             // ------------------------------------------------
             JsonNode validations = result.get("validations");
+
             if (validations != null && validations.isArray() && validations.size() > 0) {
+
                 StringBuilder validationErrors = new StringBuilder("Extraction validation failed: ");
+
                 for (JsonNode v : validations) {
                     String path = v.has("path") ? v.get("path").asText() : "";
                     String type = v.has("type") ? v.get("type").asText() : "";
@@ -294,9 +297,15 @@ public class ExtractionWorker {
                 task.markAsFailed(validationErrors.toString().trim());
                 task.setResultPath(resultPath);
                 task.setRawResult(resultJson);
+
                 taskRepository.save(task);
 
+                // ------------------------------------------------
+                // Verificar si email está completamente procesado
+                // ------------------------------------------------
+
                 checkEmailCompletion(email);
+
                 return;
             }
 
@@ -305,13 +314,15 @@ public class ExtractionWorker {
             // ------------------------------------------------
 
             task.markAsCompleted(resultPath, resultJson);
+
             taskRepository.save(task);
 
             log.info("✅ [TASK-{}] Extraction completed successfully", taskId);
 
-            // ========================================
+            // ------------------------------------------------
             // CREAR WEBHOOK EVENT POR PDF (Transactional Outbox)
-            // ========================================
+            // ------------------------------------------------
+
             if (properties.getWebhook().isEnabled() &&
                 tenant.getWebhookUrl() != null &&
                 !tenant.getWebhookUrl().isBlank()) {
@@ -342,7 +353,6 @@ public class ExtractionWorker {
                 } catch (Exception e) {
                     log.error("❌ [TASK-{}] Failed to create webhook event: {}",
                               taskId, e.getMessage(), e);
-                    // NO lanzar excepción - no queremos hacer rollback de la task
                 }
             }
 
@@ -455,21 +465,41 @@ public class ExtractionWorker {
      */
     @Transactional
     protected void checkEmailCompletion(ProcessedEmail email) {
+
+        // --------------------------------------------------
+        // Re-cargar email con relaciones (tenant, senderRule)
+        // para evitar LazyInitializationException
+        // --------------------------------------------------
+
         Long emailId = email.getId();
 
-        // Re-cargar email con relaciones (tenant, senderRule) para evitar LazyInitializationException
         email = emailRepository.findByIdWithRelations(emailId)
                 .orElseThrow(() -> new RuntimeException("Email not found: " + emailId));
+
+        // ------------------------------------------------------
+        // Verificar si todas las tareas están en estado terminal
+        // ------------------------------------------------------
 
         List<ExtractionTask> tasks = taskRepository
                 .findByEmailIdOrderByCreatedAtAsc(emailId);
 
         boolean allDone = tasks.stream().allMatch(ExtractionTask::isTerminal);
 
+        // ------------------------------------------------------
+        // Si no todas las tareas están completas, salir
+        // ------------------------------------------------------
+
         if (!allDone) {
+
             log.info("[EMAIL-{}] Not all tasks completed yet", emailId);
+
             return;
+
         }
+
+        // ------------------------------------------------------
+        // Resumen de resultados
+        // ------------------------------------------------------
 
         long completed = tasks.stream()
                 .filter(t -> t.getStatus() == ExtractionStatus.COMPLETED)
@@ -491,13 +521,20 @@ public class ExtractionWorker {
             !email.getTenant().getWebhookUrl().isBlank()) {
 
             try {
+
                 log.info("[EMAIL-{}] Creating CONSOLIDATED webhook event (Transactional Outbox)", emailId);
 
+                // ----------------------------------------
                 // Build email-level payload (summary)
+                // ----------------------------------------
+
                 Map<String, Object> payload = buildEmailWebhookPayload(email, tasks);
                 String payloadJson = objectMapper.writeValueAsString(payload);
 
+                // ------------------------------------------
                 // Create webhook event for email completion
+                // ------------------------------------------
+
                 WebhookEvent event = WebhookEvent.builder()
                         .tenantId(email.getTenant().getId())
                         .eventType("extraction_email_completed")  // Diferente de "extraction_task_completed"
@@ -519,14 +556,23 @@ public class ExtractionWorker {
             }
         }
 
+        // --------------------------------------------------------------
         // Enviar email de procesamiento completado si está configurado
+        // --------------------------------------------------------------
+
         if (email.getSenderRule() != null &&
             email.getSenderRule().getProcessEnabled() &&
             email.getSenderRule().getTemplateEmailProcessed() != null) {
 
             try {
+
+                // ------------------------------------------------
+                // Enviar notificación email
+                // ------------------------------------------------
+
                 log.info("[EMAIL-{}] Sending processed email notification", emailId);
                 emailNotificationService.sendProcessedEmail(email, tasks);
+
             } catch (Exception e) {
                 log.error("[EMAIL-{}] Failed to send email notification: {}",
                         emailId, e.getMessage(), e);

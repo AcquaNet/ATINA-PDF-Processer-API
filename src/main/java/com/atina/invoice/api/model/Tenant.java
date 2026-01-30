@@ -79,6 +79,22 @@ public class Tenant {
     private String templateBasePath = "/config/templates";
 
     /**
+     * Whether extraction processing is enabled for this tenant.
+     * Works as global AND per-tenant: both global and this flag must be true.
+     */
+    @Column(name = "extraction_enabled", nullable = false)
+    @Builder.Default
+    private boolean extractionEnabled = true;
+
+    /**
+     * Whether webhook notifications are enabled for this tenant.
+     * Works as global AND per-tenant: both global and this flag must be true.
+     */
+    @Column(name = "webhook_enabled", nullable = false)
+    @Builder.Default
+    private boolean webhookEnabled = true;
+
+    /**
      * Webhook URL para notificaciones de extracción completada
      * Se llama cuando todas las tareas de extracción de un email se completan
      */

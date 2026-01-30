@@ -31,4 +31,8 @@ public class UpdateTenantRequest {
     private Long maxStorageMb;
 
     private Boolean enabled;
+
+    private Boolean extractionEnabled;
+
+    private Boolean webhookEnabled;
 }

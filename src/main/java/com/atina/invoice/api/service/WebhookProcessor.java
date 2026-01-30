@@ -94,6 +94,14 @@ public class WebhookProcessor {
             Tenant tenant = tenantRepository.findById(event.getTenantId())
                     .orElseThrow(() -> new RuntimeException("Tenant not found: " + event.getTenantId()));
 
+            // Safety net: skip if tenant disabled webhooks after event was queued
+            if (!tenant.isWebhookEnabled()) {
+                log.info("[WEBHOOK-{}] Skipping - webhooks disabled for tenant {}", eventId, tenant.getTenantCode());
+                event.markAsSent(); // Mark as sent to avoid reprocessing
+                webhookEventRepository.save(event);
+                return;
+            }
+
             String webhookUrl = tenant.getWebhookUrl();
             if (webhookUrl == null || webhookUrl.isBlank()) {
                 throw new RuntimeException("Tenant has no webhook URL configured");

@@ -41,6 +41,12 @@ public class TenantResponse {
     @JsonProperty("enabled")
     private boolean enabled;
 
+    @JsonProperty("extractionEnabled")
+    private boolean extractionEnabled;
+
+    @JsonProperty("webhookEnabled")
+    private boolean webhookEnabled;
+
     @JsonProperty("createdAt")
     private Instant createdAt;
 

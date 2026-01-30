@@ -49,6 +49,8 @@ public class TenantService {
                 .maxApiCallsPerMonth(request.getMaxApiCallsPerMonth())
                 .maxStorageMb(request.getMaxStorageMb())
                 .enabled(request.getEnabled() != null ? request.getEnabled() : true)
+                .extractionEnabled(request.getExtractionEnabled() != null ? request.getExtractionEnabled() : true)
+                .webhookEnabled(request.getWebhookEnabled() != null ? request.getWebhookEnabled() : true)
                 .createdAt(Instant.now())
                 .updatedAt(Instant.now())
                 .build();
@@ -126,6 +128,12 @@ public class TenantService {
         }
         if (request.getEnabled() != null) {
             tenant.setEnabled(request.getEnabled());
+        }
+        if (request.getExtractionEnabled() != null) {
+            tenant.setExtractionEnabled(request.getExtractionEnabled());
+        }
+        if (request.getWebhookEnabled() != null) {
+            tenant.setWebhookEnabled(request.getWebhookEnabled());
         }
 
         tenant.setUpdatedAt(Instant.now());
@@ -230,6 +238,8 @@ public class TenantService {
                 .maxApiCallsPerMonth(tenant.getMaxApiCallsPerMonth())
                 .maxStorageMb(tenant.getMaxStorageMb())
                 .enabled(tenant.isEnabled())
+                .extractionEnabled(tenant.isExtractionEnabled())
+                .webhookEnabled(tenant.isWebhookEnabled())
                 .createdAt(tenant.getCreatedAt())
                 .updatedAt(tenant.getUpdatedAt())
                 .totalUsers(totalUsers)

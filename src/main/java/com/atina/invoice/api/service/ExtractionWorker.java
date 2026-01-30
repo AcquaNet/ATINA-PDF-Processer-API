@@ -95,6 +95,15 @@ public class ExtractionWorker {
                 break;
             }
 
+            // Skip tasks for tenants with extraction disabled
+            if (task.getEmail() != null &&
+                task.getEmail().getTenant() != null &&
+                !task.getEmail().getTenant().isExtractionEnabled()) {
+                log.debug("Skipping task {} - extraction disabled for tenant {}",
+                        task.getId(), task.getEmail().getTenant().getTenantCode());
+                continue;
+            }
+
             try {
 
                 // ---------------------------
@@ -327,6 +336,7 @@ public class ExtractionWorker {
             // ------------------------------------------------
 
             if (properties.getWebhook().isEnabled() &&
+                tenant.isWebhookEnabled() &&
                 tenant.getWebhookUrl() != null &&
                 !tenant.getWebhookUrl().isBlank()) {
 
@@ -520,6 +530,7 @@ public class ExtractionWorker {
 
         if (properties.getWebhook().isEnabled() &&
             email.getTenant() != null &&
+            email.getTenant().isWebhookEnabled() &&
             email.getTenant().getWebhookUrl() != null &&
             !email.getTenant().getWebhookUrl().isBlank()) {
 

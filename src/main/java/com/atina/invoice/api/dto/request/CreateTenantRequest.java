@@ -43,4 +43,8 @@ public class CreateTenantRequest {
     private Long maxStorageMb;
 
     private Boolean enabled = true;
+
+    private Boolean extractionEnabled = true;
+
+    private Boolean webhookEnabled = true;
 }

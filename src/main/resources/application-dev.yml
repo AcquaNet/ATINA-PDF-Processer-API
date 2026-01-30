@@ -81,7 +81,7 @@ extraction:
   # Webhook configuration
   webhook:
     # Habilitar/deshabilitar envío de webhooks
-    enabled: true
+    enabled: false
     # Timeout en segundos
     timeout-seconds: 30
     # Número de reintentos

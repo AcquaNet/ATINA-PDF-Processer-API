@@ -85,6 +85,11 @@ public interface ProcessedEmailRepository extends JpaRepository<ProcessedEmail, 
     Optional<ProcessedEmail> findByIdWithAttachments(@org.springframework.data.repository.query.Param("id") Long id);
 
     /**
+     * Buscar email por correlationId
+     */
+    Optional<ProcessedEmail> findByCorrelationId(String correlationId);
+
+    /**
      * Buscar email por ID con tenant y senderRule cargados (EAGER)
      *
      * Usado por ExtractionWorker.checkEmailCompletion() para evitar LazyInitializationException

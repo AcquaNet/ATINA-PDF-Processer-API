@@ -3,7 +3,9 @@ package com.atina.invoice.api.service;
 import com.atina.invoice.api.model.*;
 import com.atina.invoice.api.model.enums.AttachmentProcessingStatus;
 import com.atina.invoice.api.model.enums.EmailProcessingStatus;
+import com.atina.invoice.api.model.enums.NotificationEvent;
 import com.atina.invoice.api.model.enums.StorageType;
+import com.atina.invoice.api.service.notification.NotificationContext;
 import com.atina.invoice.api.repository.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.mail.Flags;
@@ -45,6 +47,7 @@ public class EmailProcessingService {
     // ⭐ NUEVO: Servicios para extracción asíncrona y notificaciones
     private final PdfExtractionService pdfExtractionService;
     private final EmailNotificationService emailNotificationService;
+    private final NotificationDispatcher notificationDispatcher;
 
     /**
      * ⭐ NUEVO: Habilitar/deshabilitar marcar como leído
@@ -422,15 +425,19 @@ public class EmailProcessingService {
                     }
                 }
 
-                // 10. ⭐ NUEVO: Enviar notificación de recepción
-                if (senderRule.getAutoReplyEnabled()) {
-                    try {
-                        log.info("📧 Sending received email notification");
-                        emailNotificationService.sendReceivedEmail(processedEmail,savedAttachments);
-                    } catch (Exception e) {
-                        log.error("Failed to send received email notification: {}", e.getMessage(), e);
-                        // No fallar el procesamiento si falla notificación
-                    }
+                // 10. ⭐ Dispatch EMAIL_RECEIVED notifications via rules
+                try {
+                    log.info("Dispatching EMAIL_RECEIVED notifications");
+                    NotificationContext ctx = NotificationContext.builder()
+                            .email(processedEmail)
+                            .attachments(savedAttachments)
+                            .tenant(processedEmail.getTenant())
+                            .senderRule(senderRule)
+                            .build();
+                    notificationDispatcher.dispatch(NotificationEvent.EMAIL_RECEIVED, ctx);
+                } catch (Exception e) {
+                    log.error("Failed to dispatch received email notifications: {}", e.getMessage(), e);
+                    // No fallar el procesamiento si falla notificación
                 }
 
                 return true; // Procesado exitosamente

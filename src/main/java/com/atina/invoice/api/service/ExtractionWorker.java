@@ -4,7 +4,9 @@ import com.atina.invoice.api.config.ExtractionProperties;
 import com.atina.invoice.api.dto.request.ExtractionOptions;
 import com.atina.invoice.api.model.*;
 import com.atina.invoice.api.model.enums.ExtractionStatus;
+import com.atina.invoice.api.model.enums.NotificationEvent;
 import com.atina.invoice.api.model.enums.WebhookEventStatus;
+import com.atina.invoice.api.service.notification.NotificationContext;
 import com.atina.invoice.api.repository.ExtractionTaskRepository;
 import com.atina.invoice.api.repository.ExtractionTemplateRepository;
 import com.atina.invoice.api.repository.ProcessedEmailRepository;
@@ -55,6 +57,7 @@ public class ExtractionWorker {
     private final ExtractionService extractionService;
     private final WebhookService webhookService;
     private final EmailNotificationService emailNotificationService;
+    private final NotificationDispatcher notificationDispatcher;
     private final ExtractionProperties properties;
     private final ObjectMapper objectMapper;
 
@@ -557,26 +560,21 @@ public class ExtractionWorker {
         }
 
         // --------------------------------------------------------------
-        // Enviar email de procesamiento completado si está configurado
+        // Dispatch EXTRACTION_COMPLETED notifications via rules
         // --------------------------------------------------------------
 
-        if (email.getSenderRule() != null &&
-            email.getSenderRule().getProcessEnabled() &&
-            email.getSenderRule().getTemplateEmailProcessed() != null) {
-
-            try {
-
-                // ------------------------------------------------
-                // Enviar notificación email
-                // ------------------------------------------------
-
-                log.info("[EMAIL-{}] Sending processed email notification", emailId);
-                emailNotificationService.sendProcessedEmail(email, tasks);
-
-            } catch (Exception e) {
-                log.error("[EMAIL-{}] Failed to send email notification: {}",
-                        emailId, e.getMessage(), e);
-            }
+        try {
+            log.info("[EMAIL-{}] Dispatching EXTRACTION_COMPLETED notifications", emailId);
+            NotificationContext ctx = NotificationContext.builder()
+                    .email(email)
+                    .tasks(tasks)
+                    .tenant(email.getTenant())
+                    .senderRule(email.getSenderRule())
+                    .build();
+            notificationDispatcher.dispatch(NotificationEvent.EXTRACTION_COMPLETED, ctx);
+        } catch (Exception e) {
+            log.error("[EMAIL-{}] Failed to dispatch notifications: {}",
+                    emailId, e.getMessage(), e);
         }
     }
 

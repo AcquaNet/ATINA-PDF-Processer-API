@@ -679,7 +679,7 @@ public class ExtractionWorker {
         payload.put("email_correlation_id", email.getCorrelationId());
         payload.put("sender_email", email.getFromAddress());
         payload.put("subject", email.getSubject());
-        
+
         // Task info
         payload.put("task_id", task.getId());
         payload.put("task_correlation_id", task.getCorrelationId());

@@ -95,7 +95,6 @@ public class WebhookService {
         payload.put("timestamp", Instant.now().toString());
 
         // Email info
-        payload.put("email_id", email.getId());
         payload.put("correlation_id", email.getCorrelationId());
         payload.put("sender_email", email.getFromAddress());
         payload.put("subject", email.getSubject());

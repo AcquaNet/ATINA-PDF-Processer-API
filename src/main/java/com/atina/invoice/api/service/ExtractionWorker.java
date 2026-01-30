@@ -675,13 +675,11 @@ public class ExtractionWorker {
         payload.put("timestamp", Instant.now().toString());
 
         // Email context
-        payload.put("email_id", email.getId());
         payload.put("email_correlation_id", email.getCorrelationId());
         payload.put("sender_email", email.getFromAddress());
         payload.put("subject", email.getSubject());
 
         // Task info
-        payload.put("task_id", task.getId());
         payload.put("task_correlation_id", task.getCorrelationId());
         payload.put("original_filename", task.getAttachment().getOriginalFilename());
         payload.put("normalized_filename", task.getAttachment().getNormalizedFilename());
@@ -727,7 +725,6 @@ public class ExtractionWorker {
         payload.put("timestamp", Instant.now().toString());
 
         // Email info
-        payload.put("email_id", email.getId());
         payload.put("correlation_id", email.getCorrelationId());
         payload.put("sender_email", email.getFromAddress());
         payload.put("subject", email.getSubject());

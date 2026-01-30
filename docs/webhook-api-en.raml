@@ -58,12 +58,6 @@ types:
         description: Event timestamp in ISO 8601 format.
         example: 2024-01-28T10:30:00.000Z
 
-      email_id:
-        type: integer
-        format: int64
-        description: Internal ID of the processed email.
-        example: 123
-
       email_correlation_id:
         type: string
         description: Email correlation ID (for idempotency).
@@ -78,23 +72,6 @@ types:
         type: string
         description: Email subject.
         example: Invoice #INV-2024-001
-
-      tenant_id:
-        type: integer
-        format: int64
-        description: Tenant ID.
-        example: 1
-
-      tenant_code:
-        type: string
-        description: Tenant code.
-        example: ACME
-
-      task_id:
-        type: integer
-        format: int64
-        description: Internal ID of the extraction task.
-        example: 456
 
       task_correlation_id:
         type: string
@@ -151,12 +128,6 @@ types:
         description: Event timestamp in ISO 8601 format.
         example: 2024-01-28T10:35:00.000Z
 
-      email_id:
-        type: integer
-        format: int64
-        description: Internal ID of the processed email.
-        example: 123
-
       correlation_id:
         type: string
         description: Email correlation ID (for idempotency).
@@ -176,17 +147,6 @@ types:
         type: datetime
         description: Email received timestamp (ISO 8601).
         example: 2024-01-28T10:00:00.000Z
-
-      tenant_id:
-        type: integer
-        format: int64
-        description: Tenant ID.
-        example: 1
-
-      tenant_code:
-        type: string
-        description: Tenant code.
-        example: ACME
 
       total_files:
         type: integer
@@ -215,11 +175,6 @@ types:
         items:
           type: object
           properties:
-            task_id:
-              type: integer
-              format: int64
-              description: Task ID.
-              example: 456
             correlation_id:
               type: string
               description: Task correlation ID.
@@ -297,7 +252,7 @@ types:
         X-Webhook-Event:
           type: string
           description: Event type being sent.
-          enum: [extraction_task_completed, extraction_email_completed]
+          enum: [extraction_task_completed, extraction_email_completed,extraction_completed]
           example: extraction_task_completed
 
       body:
@@ -310,13 +265,9 @@ types:
               value:
                 event_type: extraction_task_completed
                 timestamp: 2024-01-28T10:30:00.000Z
-                email_id: 123
                 email_correlation_id: 550e8400-e29b-41d4-a716-446655440000
                 sender_email: vendor@example.com
                 subject: "Invoice #INV-2024-001"
-                tenant_id: 1
-                tenant_code: ACME
-                task_id: 456
                 task_correlation_id: 550e8400-e29b-41d4-a716-446655440001
                 original_filename: invoice_001.pdf
                 normalized_filename: invoice_001
@@ -334,13 +285,9 @@ types:
               value:
                 event_type: extraction_task_completed
                 timestamp: 2024-01-28T10:31:00.000Z
-                email_id: 123
                 email_correlation_id: 550e8400-e29b-41d4-a716-446655440000
                 sender_email: vendor@example.com
                 subject: "Invoice #INV-2024-001"
-                tenant_id: 1
-                tenant_code: ACME
-                task_id: 457
                 task_correlation_id: 550e8400-e29b-41d4-a716-446655440002
                 original_filename: invoice_002.pdf
                 normalized_filename: invoice_002
@@ -354,36 +301,30 @@ types:
               value:
                 event_type: extraction_email_completed
                 timestamp: 2024-01-28T10:35:00.000Z
-                email_id: 123
                 correlation_id: 550e8400-e29b-41d4-a716-446655440000
                 sender_email: vendor@example.com
                 subject: "Invoice #INV-2024-001"
                 received_date: 2024-01-28T10:00:00.000Z
-                tenant_id: 1
-                tenant_code: ACME
                 total_files: 3
                 extracted_files: 2
                 failed_files: 1
                 success_rate: 66.67
                 extractions:
-                  - task_id: 456
-                    correlation_id: 550e8400-e29b-41d4-a716-446655440001
+                  - correlation_id: 550e8400-e29b-41d4-a716-446655440001
                     original_filename: invoice_001.pdf
                     normalized_filename: invoice_001
                     source: JDE
                     status: COMPLETED
                     extracted_data:
                       field_example: value
-                  - task_id: 457
-                    correlation_id: 550e8400-e29b-41d4-a716-446655440002
+                  - correlation_id: 550e8400-e29b-41d4-a716-446655440002
                     original_filename: invoice_002.pdf
                     normalized_filename: invoice_002
                     source: JDE
                     status: COMPLETED
                     extracted_data:
                       field_example: value
-                  - task_id: 458
-                    correlation_id: 550e8400-e29b-41d4-a716-446655440003
+                  - correlation_id: 550e8400-e29b-41d4-a716-446655440003
                     original_filename: invoice_003.pdf
                     normalized_filename: invoice_003
                     source: JDE
@@ -437,5 +378,4 @@ types:
           body:
             application/json:
               description: Internal server error.
-              example: !include examples/ResponseStandard-500.json
               example: !include examples/ResponseStandard-500.json

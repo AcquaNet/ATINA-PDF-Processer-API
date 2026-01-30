@@ -79,8 +79,13 @@ public class TenantNotificationRuleController {
             return ResponseEntity.ok(ApiResponse.success(rule, MDC.get("correlationId"), duration));
 
         } catch (IllegalArgumentException e) {
+            long duration = System.currentTimeMillis() - start;
             return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Invalid enum value: " + e.getMessage()));
+                    .body(ApiResponse.error(
+                        "Invalid enum value: " + e.getMessage(),
+                        MDC.get("correlationId"),
+                        duration
+                    ));
         }
     }
 
@@ -133,8 +138,13 @@ public class TenantNotificationRuleController {
             return ResponseEntity.ok(ApiResponse.success(rule, MDC.get("correlationId"), duration));
 
         } catch (IllegalArgumentException e) {
+            long duration = System.currentTimeMillis() - start;
             return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Invalid enum value: " + e.getMessage()));
+                    .body(ApiResponse.error(
+                        "Invalid enum value: " + e.getMessage(),
+                        MDC.get("correlationId"),
+                        duration
+                    ));
         }
     }
 
